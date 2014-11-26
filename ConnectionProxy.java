@@ -16,7 +16,7 @@ public class ConnectionProxy {
 	}
 	
 	/* HTTP(S) proxy with authentication */
-	public static void setHTTPProxy(String host, int port, String username, String passwd){
+	public static void setHTTPProxy(String host, int port, final String username, final String passwd){
 		proxyHTTP = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port));
 		Authenticator auth = new Authenticator(){
 			public PasswordAuthentication getPasswordAuthentication(){
