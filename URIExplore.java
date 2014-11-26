@@ -4,69 +4,83 @@ import java.util.HashSet;
 import java.util.Set;
 
 /*
- *	class URIExplore explores a given URL and gets the information about
+ *	URIExplore explores a given URL, gets the information about
  *	the contents being served at the server.
+ *	Following contents are returned:
+ *		finalURI -> file at the existing URI
+ *		contentLength -> length of the content being served
+ *		segments -> number of segments used to download multipart
  */
 public class URIExplore {
 	public String finalURI;
-	public long contentLength;
-	public int segments;
 	
 	private int responseCode;
-	private Set<String> redirectionSet;
+	private Set<String> redirectionSet = null;					/* check redirection loops */
 	
 	private HttpURLConnection con = null;
 	
 	public URIExplore(String url){
-		this.finalURI = url;		
+		finalURI = url;
 		explore();
 	}
 
-	// processing the link
 	private void explore(){
+		/* try connection establishment */
 		try{
 			HttpURLConnection.setFollowRedirects(false);
 			con = (HttpURLConnection) new URL(finalURI).openConnection(Downloader.setProxy());
 			con.setRequestMethod("HEAD");
 			responseCode = con.getResponseCode();
 		} catch(Exception e){
-			// TODO: ConnectException 
+			/* error establishing connection */
+			Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+			finalURI = null;
+			return;
 		} finally{
 			con.disconnect();
-			if(responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_MOVED_TEMP){
-				// TODO: Invalid URL
-				System.out.println(responseCode);
+			/* everything is an error except 200,301 (permanent move),302 (temporary move) */
+			if(responseCode != HttpURLConnection.HTTP_OK && responseCode != HttpURLConnection.HTTP_MOVED_TEMP && responseCode != HttpURLConnection.HTTP_MOVED_PERM){
+				Logger.log(Logger.Status.ERR_HTTP, "Status Code: "+responseCode);
 				return;
 			}
 		}
-		
+
 		try{
-			// if first connection returned OK, no redirections
+			/* trace redirection links */
 			if(responseCode != HttpURLConnection.HTTP_OK){
+				/* create a set to check for unique links */
 				redirectionSet = new HashSet<String>();
 				redirectionSet.add(finalURI);
 				
 				con = (HttpURLConnection) new URL(finalURI).openConnection(Downloader.setProxy());
 				con.setRequestMethod("HEAD");
-				while(con.getResponseCode() == HttpURLConnection.HTTP_MOVED_TEMP){
+				responseCode = con.getResponseCode();
+				/* follow redirects till codes 301 or 302 */
+				while(responseCode == HttpURLConnection.HTTP_MOVED_TEMP || responseCode == HttpURLConnection.HTTP_MOVED_PERM){
 					finalURI = con.getHeaderField("Location");
+					/* terminate connection and routine if cycle detected */
 					if(!redirectionSet.add(finalURI)){
-						// TODO: cycle in redirection error
-						break;
+						Logger.log(Logger.Status.ERR_REDIRECT, "Starting at: "+finalURI);
+						finalURI = null;
+						con.disconnect();
+						return;
 					}
-					//System.out.println(finalURI + " " + con.getResponseCode());
 					con.disconnect();
+					
+					/* setup a new connection to the redirected URI */
 					con = (HttpURLConnection) new URL(finalURI).openConnection(Downloader.setProxy());
 					con.setRequestMethod("HEAD");
+					responseCode = con.getResponseCode();
 				}
 			}
 		}catch(Exception e){
-			// TODO: ConnectException
+			Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+			finalURI = null;
 		}finally{
 			con.disconnect();
 		}
-		contentLength = Integer.parseInt(con.getHeaderField("Content-Length"));
-		// TODO: build segment logic
-		segments = 5;
+
+		redirectionSet = null;
+		con = null;
 	}
 }
