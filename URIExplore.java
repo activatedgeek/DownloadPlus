@@ -28,7 +28,10 @@ public class URIExplore {
 		/* try connection establishment */
 		try{
 			HttpURLConnection.setFollowRedirects(false);
-			con = (HttpURLConnection) new URL(finalURI).openConnection(Downloader.setProxy());
+			if(ConnectionProxy.proxyHTTP != null)
+				con = (HttpURLConnection) new URL(finalURI).openConnection(ConnectionProxy.proxyHTTP);
+			else
+				con = (HttpURLConnection) new URL(finalURI).openConnection();
 			con.setRequestMethod("HEAD");
 			responseCode = con.getResponseCode();
 		} catch(Exception e){
@@ -52,7 +55,10 @@ public class URIExplore {
 				redirectionSet = new HashSet<String>();
 				redirectionSet.add(finalURI);
 				
-				con = (HttpURLConnection) new URL(finalURI).openConnection(Downloader.setProxy());
+				if(ConnectionProxy.proxyHTTP != null)
+					con = (HttpURLConnection) new URL(finalURI).openConnection(ConnectionProxy.proxyHTTP);
+				else
+					con = (HttpURLConnection) new URL(finalURI).openConnection();
 				con.setRequestMethod("HEAD");
 				responseCode = con.getResponseCode();
 				/* follow redirects till codes 301 or 302 */
@@ -68,7 +74,10 @@ public class URIExplore {
 					con.disconnect();
 					
 					/* setup a new connection to the redirected URI */
-					con = (HttpURLConnection) new URL(finalURI).openConnection(Downloader.setProxy());
+					if(ConnectionProxy.proxyHTTP != null)
+						con = (HttpURLConnection) new URL(finalURI).openConnection(ConnectionProxy.proxyHTTP);
+					else
+						con = (HttpURLConnection) new URL(finalURI).openConnection();
 					con.setRequestMethod("HEAD");
 					responseCode = con.getResponseCode();
 				}
