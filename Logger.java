@@ -4,8 +4,9 @@ import java.util.Map;
 import java.util.Date;
 
 public class Logger {
-	private static boolean enable = false;
+	private static boolean log = false;
 	private static boolean debug = false;
+	/* enumerations for errors, check the map below for message strings */
 	public enum Status{
 		ERR_CONN,ERR_HTTP,ERR_REDIRECT
 	}
@@ -19,11 +20,11 @@ public class Logger {
 	public Logger(){}
 	
 	public static void enableLog(){
-		enable = true;
+		log = true;
 	}
 	
 	public static void enableLog(boolean flag){
-		enable = flag;
+		log = flag;
 	}
 
 	public static void enableDebug(){
@@ -35,14 +36,14 @@ public class Logger {
 	}
 	
 	public static void log(Status status){
-		if(enable){
+		if(log){
 			System.out.print("["+new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())+"] ");
 			System.out.println(status.toString()+ " -> "+errorMap.get(status));
 		}
 	}
 	
 	public static void log(Status status, String extra){
-		if(enable){
+		if(log){
 			System.out.print("["+new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())+"] ");
 			System.out.println(status.toString()+ " -> "+errorMap.get(status)+" "+extra);
 		}
