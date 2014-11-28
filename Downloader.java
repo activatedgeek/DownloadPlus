@@ -6,6 +6,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 public class Downloader extends Thread{
+	DownloadUnit dUnit;
 	private String finalURI;
 	private String destPath;
 	private HttpURLConnection con;
@@ -14,12 +15,12 @@ public class Downloader extends Thread{
 	public String fileName;
 	public long fileSize;
 	
-	public Downloader(String url, String path) {
-		
-		URIExplore uri = new URIExplore(url);
-		Logger.debug(uri.finalURI);
+	public Downloader(DownloadUnit dUnit) {
+		this.dUnit = dUnit;
+		URIExplore uri = new URIExplore((String)dUnit.getProperty(DownloadUnit.TableField.ORIGIN));
+		dUnit.setProperty(DownloadUnit.TableField.URL, (String)uri.finalURI);
 		finalURI = uri.finalURI;
-		destPath = path;
+		destPath = (String)dUnit.getProperty(DownloadUnit.TableField.FOLDER);
 	}
 	
 	/* Sets the filename for a file at given URL */
@@ -38,7 +39,8 @@ public class Downloader extends Thread{
 		else if(contentType.split(";")[0].equals("text/html"))
 			fileName = "index.html";
 		else
-			fileName = finalURI.substring(finalURI.lastIndexOf("/") + 1, finalURI.length());	
+			fileName = finalURI.substring(finalURI.lastIndexOf("/") + 1, finalURI.length());
+		dUnit.setProperty(DownloadUnit.TableField.FILENAME, (String)fileName);
 	}
 	
 	/* Sets up a connection to the given finalURI */
@@ -65,17 +67,25 @@ public class Downloader extends Thread{
 			con = makeConnection();
 			if (con != null){
 				con.setRequestMethod("HEAD");
-				Logger.debug(""+con.getHeaderFields());
 				
 				/* set file size (in bytes) and name */
-				fileSize = con.getContentLength();			
+				fileSize = con.getContentLength();
+				if(fileSize != -1){
+					dUnit.setProperty(DownloadUnit.TableField.SIZE, fileSize+"");
+				}
+				else{
+					dUnit.setProperty(DownloadUnit.TableField.SIZE, (String)"N/A");
+				}
+				
 				int responseCode = con.getResponseCode();
 				if(responseCode == HttpURLConnection.HTTP_OK){
 					setfileName();
 					/* Download in segments if server supports Accept-Ranges header */
 					String rangeSupport = con.getHeaderField("Accept-Ranges");
-					if (rangeSupport != null)
+					if (rangeSupport != null){
 						numSegments = 5;
+						dUnit.setProperty(DownloadUnit.TableField.SEGMENTS, numSegments);
+					}
 					// TODO: segment calculation logic
 					con.disconnect();
 					
@@ -89,8 +99,11 @@ public class Downloader extends Thread{
 	}
 	
 	private void startDownloading(){
+		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Running");
+		
 		/* No segment downloading, directly download the whole file */
 		if(numSegments==1){
+			dUnit.setProperty(DownloadUnit.TableField.SEGMENTS, 1);
 			try{
 				con = makeConnection();
 				con.setRequestMethod("GET");
@@ -141,10 +154,12 @@ public class Downloader extends Thread{
 			// merge the downloaded segments
 			mergeSegments();
 		}
+		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Completed");
 	}
 	
 	/* Merge the downloaded segments into one file and deletes them */
 	private void mergeSegments(){
+		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Merging");
 		String filesavePath = destPath + File.separator + fileName;
 		try {
 			FileOutputStream finalFile = new FileOutputStream(filesavePath);
