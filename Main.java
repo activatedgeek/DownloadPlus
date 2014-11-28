@@ -94,7 +94,7 @@ public class Main extends Application {
 		stopbtn.setGraphic(new ImageView(stopimage));
 		
 		toolBar.getItems().addAll(addbtn,playPausebtn,stopbtn);
-		toolBar.getStylesheets().add("downloadboxStyle.css");
+		toolBar.getStylesheets().add("css/downloadboxStyle.css");
 		
 		//list of downloads
 		table.setEditable(true);
