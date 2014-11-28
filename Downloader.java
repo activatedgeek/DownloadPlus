@@ -1,12 +1,11 @@
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-public class Downloader {
+public class Downloader extends Thread{
 	private String finalURI;
 	private String destPath;
 	private HttpURLConnection con;
@@ -20,7 +19,6 @@ public class Downloader {
 		Logger.debug(uri.finalURI);
 		finalURI = uri.finalURI;
 		destPath = path;
-		download();
 	}
 	
 	/* Sets the filename for a file at given URL */
@@ -53,7 +51,7 @@ public class Downloader {
 		}
 	}
 	
-	private void download(){
+	public void run(){
 		/* prevent further redirects */
 		HttpURLConnection.setFollowRedirects(false);
 		
@@ -105,7 +103,7 @@ public class Downloader {
 					Logger.debug("Wrote : "+bytesRead + " bytes");
 				}
 	
-				//Logger.debug(((float)total/1024)/1024+" MB written.");
+				Logger.debug(((float)total/1024)/1024+" MB written.");
 				outputStream.close();
 				inputStream.close();
 			}catch(Exception e){
