@@ -10,11 +10,12 @@ public class Downloader extends Thread{
 	private String destPath;
 	private HttpURLConnection con;
 	private int numSegments = 1;
-	
+
 	public String fileName;
 	public long fileSize;
 	
 	public Downloader(String url, String path) {
+		
 		URIExplore uri = new URIExplore(url);
 		Logger.debug(uri.finalURI);
 		finalURI = uri.finalURI;
@@ -28,8 +29,11 @@ public class Downloader extends Thread{
 
 		if(disposition != null){
 			int index = disposition.indexOf("filename=");
-			if (index > 0)
-				fileName = disposition.substring(index+10, disposition.length()-1);
+			if (index > 0){
+				fileName = disposition.substring(index+9, disposition.length());
+				if(fileName.substring(0, 1).equals("\""))
+					fileName = fileName.substring(1,fileName.length()-1);
+			}
 		}
 		else if(contentType.split(";")[0].equals("text/html"))
 			fileName = "index.html";
@@ -51,6 +55,7 @@ public class Downloader extends Thread{
 		}
 	}
 	
+	/* Setup the download parameters */
 	public void run(){
 		/* prevent further redirects */
 		HttpURLConnection.setFollowRedirects(false);
@@ -148,12 +153,13 @@ public class Downloader extends Thread{
 			int bytesRead = -1;
 			// read each segment and delete afterwards
 			for(int i=1; i<=numSegments; i++){
-				inputSegment = new FileInputStream(filesavePath+".part"+i);
+				String segmentPath = Main.tempFolderPath + File.separator + fileName + ".part" + i;
+				inputSegment = new FileInputStream(segmentPath);
 				while((bytesRead=inputSegment.read(buffer)) != -1)
 					finalFile.write(buffer, 0, bytesRead);
 				inputSegment.close();
 				// delete the segment
-				File file = new File(filesavePath+".part"+i);
+				File file = new File(segmentPath);
 				file.delete();
 			}
 			finalFile.close();
@@ -184,7 +190,8 @@ public class Downloader extends Thread{
 				segConnection.setRequestMethod("GET");
 				segConnection.setRequestProperty("Range", "bytes=" + startByte + "-" + (startByte+segmentSize-1));
 				InputStream inputStream = segConnection.getInputStream();
-				String segmentsavePath = destPath + File.separator + segmentName;
+				// Path where segment is saved
+				String segmentsavePath = Main.tempFolderPath + File.separator + segmentName;
 				
 				FileOutputStream outputStream = new FileOutputStream(segmentsavePath);
 				int bytesRead = -1;
