@@ -1,6 +1,11 @@
+/* Estimate the elapsed time 
+ * TODO:  Reduce if-else construct
+ * 			overheads in elapsed time
+ * 			calculations, add more precision
+ */
+
 public class Clock {
-	private long start;
-	private long elapsed;
+	private long start, elapsed, lap;
 	public enum Resolution{
 		MILLISEC, SEC, MINUTE, HOUR, DAY
 	}
@@ -12,6 +17,7 @@ public class Clock {
 	
 	public void startTimer(){
 		start = System.currentTimeMillis();
+		lap = start;
 	}
 	
 	/* return elapsed milliseconds */
@@ -54,8 +60,38 @@ public class Clock {
 	}
 	
 	/* get elapsed time from last lap */
-	public long getLastElapsedLapTime(){
-		return System.currentTimeMillis()-elapsed;
+	public long getLapElapsedTime(){
+		/* start timer before using */
+		if(start == -1){
+			Logger.log(Logger.Status.ERR_CLOCK);
+			return -1;
+		}
+		
+		long elapsedLap = System.currentTimeMillis() - lap;
+		/* update current lap */
+		lap = System.currentTimeMillis();
+		return elapsedLap;
+	}
+	
+	public long getLapElapsedTime(Resolution reso){
+		/* start timer before using */
+		if(start == -1){
+			Logger.log(Logger.Status.ERR_CLOCK);
+			return -1;
+		}
+		
+		long elapsedLap = System.currentTimeMillis() - lap;
+		if(reso == Resolution.SEC)
+			elapsedLap /= 1000;
+		else if(reso == Resolution.MINUTE)
+			elapsedLap /= 60;
+		else if(reso == Resolution.HOUR)
+			elapsedLap /= 60;
+		else if(reso == Resolution.DAY)
+			elapsedLap /= 24;
+		/* update current lap */
+		lap = System.currentTimeMillis();
+		return elapsedLap;
 	}
 	
 	public void resetTimer(){
