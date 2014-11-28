@@ -17,6 +17,14 @@ import javafx.stage.Stage;
 
 
 public class Main extends Application {
+	public static String tempFolderPath = System.getProperty("user.home")+File.separator + ".downloadPlusPlus" + File.separator + "segments";
+	
+	static{
+		Logger.enableDebug();
+		Logger.enableLog();
+		(new File(tempFolderPath)).mkdirs();
+	}
+	
 	private Button addbtn,playPausebtn,stopbtn;
 	private TableView<DownloadUnit> table = new TableView<DownloadUnit>();
 	private String windowTitle = "Download++";
