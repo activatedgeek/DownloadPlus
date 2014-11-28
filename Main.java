@@ -1,4 +1,8 @@
 import java.io.File;
+import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 import javafx.application.Application;
 import javafx.collections.FXCollections;
@@ -9,12 +13,12 @@ import javafx.scene.layout.*;
 import javafx.stage.*;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.control.cell.ProgressBarTableCell;
 import javafx.event.*;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.layout.GridPane;
 import javafx.stage.Stage;
-
 
 public class Main extends Application {
 	public static String tempFolderPath = System.getProperty("user.home")+File.separator + ".downloadPlusPlus" + File.separator + "segments";
@@ -22,7 +26,9 @@ public class Main extends Application {
 	static{
 		Logger.enableDebug();
 		Logger.enableLog();
-		(new File(tempFolderPath)).mkdirs();
+		File toTemp = new File(tempFolderPath);
+		if(!toTemp.isDirectory())
+			toTemp.mkdirs();
 	}
 	
 	private Button addbtn,playPausebtn,stopbtn;
@@ -30,13 +36,15 @@ public class Main extends Application {
 	private String windowTitle = "Download++";
 	private int width = 700, height = 525;
 
-	@SuppressWarnings({ "rawtypes"})
+	@SuppressWarnings({"rawtypes"})
 	private TableColumn fileNameCol, sizeCol, statusCol, transferRateCol, progressCol;
 	
-	private final ObservableList<DownloadUnit> downloadList = FXCollections.observableArrayList();
+	private static final ObservableList<DownloadUnit> downloadList = FXCollections.observableArrayList();
+	private static final HashMap<Long, DownloadUnit> idToDunit = new HashMap<Long, DownloadUnit>();
+	private static long uid = 0;
 	
 	public static void main(String[] args) {
-		launch(args); 
+		launch(args);
 	}
 	
 	@Override
@@ -114,12 +122,29 @@ public class Main extends Application {
 	     
 	    progressCol = new TableColumn("Progress");
 	    progressCol.setPrefWidth(130);
-	     
+	    progressCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit, Double>("progress"));
+	    progressCol.setCellFactory(ProgressBarTableCell.<DownloadUnit> forTableColumn());
+        
 	    table.getColumns().addAll(fileNameCol, sizeCol,transferRateCol,statusCol,progressCol);
-	    
+        
 	    table.setItems(downloadList);
 	    topContainer.getChildren().addAll(table);
+	    
+	    /*
+	    ExecutorService executor = Executors.newFixedThreadPool(table.getItems().size(), new ThreadFactory() {
+	    	@Override
+	    	public Thread newThread(Runnable r) {
+	    		Thread t = new Thread(r);
+	    		t.setDaemon(true);
+	    		return t;
+	    	}
+	    });
 
+	    for (DownloadUnit task : table.getItems()) {
+	    	executor.execute(task);
+	    }
+	    */
+        
 	    stage.setScene(scene);
 	}
 	
@@ -175,11 +200,24 @@ public class Main extends Application {
 					@Override
 		            public void handle(ActionEvent e) {
 		                if ((addURL.getText() != null && !addURL.getText().isEmpty())){
-		                    //updateUrl(String )
-		                    fileNameCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("fileName"));
-		                    downloadList.add(new DownloadUnit(addURL.getText()));
-		                    (new Downloader(addURL.getText(), saveAs.getText())).start();
 		                    popup.close();
+		                    
+		                    new Thread(){
+		                    	public void run(){
+		                    		DownloadUnit dUnit = new DownloadUnit(addURL.getText());
+		                    		dUnit.setProperty(DownloadUnit.TableField.FOLDER, (String)saveAs.getText());
+		                    		dUnit.setUID(uid);
+		                    		idToDunit.put(uid++, dUnit);
+		                    		downloadList.add(dUnit);
+		                    		
+				                    (new Downloader(dUnit)).start();
+		                    	}
+		                    }.start();
+		                    
+		                    fileNameCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("filename"));
+		                    sizeCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("size"));
+		                    statusCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("status"));
+		                    transferRateCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("transferRate"));
 		                } 
 		                else {
 		                	label.setText("Please enter a URL");
@@ -202,8 +240,7 @@ public class Main extends Application {
 			public void handle(ActionEvent arg0) {
 				DownloadUnit selected = (DownloadUnit)table.getSelectionModel().getSelectedItem();
 				//function/java file is called that contain the functionality for pause/stop
-				if(selected != null) {
-					System.out.println(selected.getFileName()); 					
+				if(selected != null) {					
 				}
 				
 			}
@@ -215,7 +252,7 @@ public class Main extends Application {
 				DownloadUnit selected = (DownloadUnit)table.getSelectionModel().getSelectedItem();
 				//function/java file is called that contain the functionality for pause/stop
 				if(selected != null) {
-					System.out.println(selected.getFileName()); 					
+					System.out.println(selected.getProperty(DownloadUnit.TableField.STATUS)); 					
 				}
 			}
 		});
