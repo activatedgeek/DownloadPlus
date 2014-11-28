@@ -17,8 +17,6 @@ public class Logger {
 		errorMap.put(Status.ERR_REDIRECT, "Redirection cycle detected.");
 		errorMap.put(Status.ERR_CLOCK, "Error operating with clock.");
 	}
-
-	public Logger(){}
 	
 	public static void enableLog(){
 		log = true;
