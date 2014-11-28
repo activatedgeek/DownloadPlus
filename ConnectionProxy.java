@@ -5,7 +5,7 @@ import java.net.Proxy;
 
 public class ConnectionProxy {
 	public static Proxy proxyHTTP = null;
-	public ConnectionProxy(){
+	static{
 		proxyHTTP = null;
 		Authenticator.setDefault(null);
 	}
