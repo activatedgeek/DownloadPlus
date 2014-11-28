@@ -8,6 +8,7 @@ import java.net.URL;
 public class Downloader {
 	private String finalURI;
 	private String destPath;
+	private HttpURLConnection con;
 	
 	public Downloader(String url, String path) {
 		URIExplore uri = new URIExplore(url);
@@ -19,53 +20,62 @@ public class Downloader {
 	
 	public void startDownloading(){
 		try{
-			HttpURLConnection con = (HttpURLConnection) new URL(finalURI).openConnection(ConnectionProxy.proxyHTTP);
-			con.setRequestMethod("HEAD");
+			/* prevent further redirects */
+			HttpURLConnection.setFollowRedirects(false);
+			/* support for proxy connections */
+			if(ConnectionProxy.proxyHTTP != null)
+				con = (HttpURLConnection) new URL(finalURI).openConnection(ConnectionProxy.proxyHTTP);
+			else
+				con = (HttpURLConnection) new URL(finalURI).openConnection();
+			
+			con.setRequestMethod("GET");
+			//TODO: check for 206 (partial content) accept ranges header
+			
+			//con.setRequestProperty("", "");
 			int responseCode = con.getResponseCode();
-			// valid destination link
+
+			Logger.debug(""+con.getHeaderFields());
+			
 			if(responseCode == HttpURLConnection.HTTP_OK){
 				String disposition = con.getHeaderField("Content-Disposition");
 				String contentType = con.getContentType();
-				int contentLength = con.getContentLength();
 
-				// setting up the filename
 				String fileName = "";
-				if(disposition != null){			// get the filename from header
+				if(disposition != null){
 					int index = disposition.indexOf("filename=");
 					if (index > 0)
 						fileName = disposition.substring(index+9, disposition.length());
-				}									// if it is HTML file
+				}
 				else if(contentType.split(";")[0].equals("text/html"))
 					fileName = "index.html";
-				else								// get it from URL
+				else
 					fileName = finalURI.substring(finalURI.lastIndexOf("/") + 1, finalURI.length());
-				
-				//System.out.println(fileName);
 				
 				// input stream from HTTP connection is opened
 				InputStream inputStream = con.getInputStream();
 				String filesavePath = destPath + File.separator + fileName;
-				System.out.println(filesavePath);
-				// output stream to save new file is opened
+				Logger.debug(filesavePath);
+				
 				FileOutputStream outputStream = new FileOutputStream(filesavePath);
 				
 				int bytesRead = -1;
 				byte[] buffer = new byte[4096];
-				System.out.println(inputStream.read(buffer));
+				int total = 0;
 				while((bytesRead = inputStream.read(buffer)) != -1){
 					outputStream.write(buffer, 0, bytesRead);
-					System.out.println(bytesRead);
+					total += bytesRead;
+					Logger.debug("Wrote : "+bytesRead + " bytes");
 				}
 				
-				System.out.println("successfully downloaded the file");
+				Logger.debug((total/1024)/1024+" MB written.");
 				outputStream.close();
 				inputStream.close();
-				con.disconnect();
 			}
 		}catch(Exception e){
-			System.out.println(e.getMessage());
-			// TODO: problem in URL, aborting download
+			Logger.log(Logger.Status.ERR_CONN, e.getMessage());
 			return;
+		}finally{
+			con.disconnect();
 		}
 	}
 }
