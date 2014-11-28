@@ -1,4 +1,6 @@
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -71,6 +73,7 @@ public class Downloader {
 					String rangeSupport = con.getHeaderField("Accept-Ranges");
 					if (rangeSupport != null)
 						numSegments = 5;
+					// TODO: segment calculation logic
 					con.disconnect();
 					
 					startDownloading();
@@ -102,7 +105,7 @@ public class Downloader {
 					Logger.debug("Wrote : "+bytesRead + " bytes");
 				}
 	
-				Logger.debug(((float)total/1024)/1024+" MB written.");
+				//Logger.debug(((float)total/1024)/1024+" MB written.");
 				outputStream.close();
 				inputStream.close();
 			}catch(Exception e){
@@ -116,11 +119,50 @@ public class Downloader {
 		else{
 			long startByte = 0;
 			long segmentSize = fileSize/numSegments + numSegments;
+			Thread t_list[] = new Thread[numSegments];
+			// make threads
 			for(int i=1; i<=numSegments; i++){
-				(new downloadSegment(i, startByte, segmentSize)).start();
+				t_list[i-1] = new downloadSegment(i, startByte, segmentSize);
+				t_list[i-1].start();
 				startByte += segmentSize;
 			}
+			for(int i=0; i<numSegments; i++){
+				try {
+					t_list[i].join();
+				} catch (InterruptedException e) {
+					Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+					return;
+				}
+			}
+			Logger.debug("All threads finished downloading");
+			// merge the downloaded segments
+			mergeSegments();
 		}
+	}
+	
+	/* Merge the downloaded segments into one file and deletes them */
+	private void mergeSegments(){
+		String filesavePath = destPath + File.separator + fileName;
+		try {
+			FileOutputStream finalFile = new FileOutputStream(filesavePath);
+			FileInputStream inputSegment;
+			byte buffer[] = new byte[4096];
+			int bytesRead = -1;
+			// read each segment and delete afterwards
+			for(int i=1; i<=numSegments; i++){
+				inputSegment = new FileInputStream(filesavePath+".part"+i);
+				while((bytesRead=inputSegment.read(buffer)) != -1)
+					finalFile.write(buffer, 0, bytesRead);
+				inputSegment.close();
+				// delete the segment
+				File file = new File(filesavePath+".part"+i);
+				file.delete();
+			}
+			finalFile.close();
+		} catch (Exception e) {
+			Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+			return;
+		}		
 	}
 	
 	/* Class to work as thread for downloading one segment */
@@ -162,6 +204,8 @@ public class Downloader {
 			}catch(Exception e){
 				Logger.log(Logger.Status.ERR_CONN, e.getMessage());
 				return;
+			}finally{
+				segConnection.disconnect();
 			}
 		}
 	}
