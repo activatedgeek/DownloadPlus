@@ -8,7 +8,8 @@ public class Logger {
 	private static boolean debug = false;
 	/* enumerations for errors, check the map below for message strings */
 	public enum Status{
-		ERR_CONN,ERR_HTTP,ERR_REDIRECT,ERR_CLOCK
+		ERR_CONN, ERR_HTTP, ERR_REDIRECT, ERR_CLOCK,
+		ERR_DUMP, ERR_READ, ERR_MERGE
 	}
 	private static final Map<Status, String> errorMap = new HashMap<Status,String>();
 	static{
@@ -16,6 +17,9 @@ public class Logger {
 		errorMap.put(Status.ERR_HTTP, "Error response from HTTP.");
 		errorMap.put(Status.ERR_REDIRECT, "Redirection cycle detected.");
 		errorMap.put(Status.ERR_CLOCK, "Error operating with clock.");
+		errorMap.put(Status.ERR_DUMP, "Error dumpting data.");
+		errorMap.put(Status.ERR_READ, "Error reading data.");
+		errorMap.put(Status.ERR_MERGE, "Error merging part files.");
 	}
 	
 	public static void enableLog(){
