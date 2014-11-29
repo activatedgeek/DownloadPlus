@@ -94,12 +94,13 @@ public class Downloader extends Thread{
 			}
 		}catch(Exception e){
 			Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+			dUnit.setProperty(DownloadUnit.TableField.STATUS, "Connection Error");
 			return;
 		}
 	}
 	
 	private void startDownloading(){
-		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Running");
+		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Downloading");
 		
 		/* No segment downloading, directly download the whole file */
 		if(numSegments==1){
@@ -115,10 +116,15 @@ public class Downloader extends Thread{
 				int bytesRead = -1;
 				byte[] buffer = new byte[4096];
 				int total = 0;
+				Clock clock = new Clock();
+				clock.startTimer();
 				while((bytesRead = inputStream.read(buffer)) != -1){
 					outputStream.write(buffer, 0, bytesRead);
 					total += bytesRead;
-					Logger.debug("Wrote : "+bytesRead + " bytes");
+					long totaltime = clock.getTotalElapsedTime()+1;
+					double rate = ((double)total*1000)/totaltime;
+					Logger.debug("Wrote : "+bytesRead + " bytes" + " at rate "+rate+" Bps");
+					dUnit.setProperty(DownloadUnit.TableField.TRANSFER_RATE, rate+" Bps");
 				}
 	
 				Logger.debug(((float)total/1024)/1024+" MB written.");
@@ -126,6 +132,7 @@ public class Downloader extends Thread{
 				inputStream.close();
 			}catch(Exception e){
 				Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+				dUnit.setProperty(DownloadUnit.TableField.STATUS, "Connection Error");
 				return;
 			}finally{
 				con.disconnect();
@@ -147,11 +154,12 @@ public class Downloader extends Thread{
 					t_list[i].join();
 				} catch (InterruptedException e) {
 					Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+					dUnit.setProperty(DownloadUnit.TableField.STATUS, "Connection Error");
 					return;
 				}
 			}
 			Logger.debug("All threads finished downloading");
-			// merge the downloaded segments
+			
 			mergeSegments();
 		}
 		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Completed");
@@ -179,7 +187,8 @@ public class Downloader extends Thread{
 			}
 			finalFile.close();
 		} catch (Exception e) {
-			Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+			Logger.log(Logger.Status.ERR_MERGE, e.getMessage());
+			dUnit.setProperty(DownloadUnit.TableField.STATUS, "Error Merging");
 			return;
 		}		
 	}
