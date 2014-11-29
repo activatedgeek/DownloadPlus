@@ -218,10 +218,16 @@ public class Downloader extends Thread{
 				String segmentsavePath = Main.tempFolderPath + File.separator + segmentName;
 				
 				FileOutputStream outputStream = new FileOutputStream(segmentsavePath);
+				// number of bytes remaining to be read
+				long readRemaining = segmentSize;
 				int bytesRead = -1;
 				byte[] buffer = new byte[4096];
 				int total = 0;
 				while((bytesRead = inputStream.read(buffer)) != -1){
+					readRemaining-=bytesRead;				// decrement remaining bytes to read
+					// garbage if more bytes are read than needed
+					if(readRemaining < 0)
+						bytesRead = (int)readRemaining+bytesRead;
 					outputStream.write(buffer, 0, bytesRead);
 					total += bytesRead;
 					Logger.debug("Segment" + segNo + ": Wrote : "+bytesRead + " bytes");
