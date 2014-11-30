@@ -10,21 +10,20 @@ import java.util.List;
 
 public class Downloader extends Thread{
 	DownloadUnit dUnit;
-	private String finalURI;
-	private String destPath;
 	private HttpURLConnection con;
 	private int readTimeout = 5000;
 	private int bufferSize = 4096;
 	
 	private int numSegments = 1;
 	private List<Long> segmentSizes = new ArrayList<Long>();
-	private List<Long> segmentProgress = new ArrayList<Long>();
-	private List<Thread> segmentThread = new ArrayList<Thread>();
-
-	public String fileName;
-	public long fileSize;
-	private boolean acceptRanges = false;
+	private List<Double> segmentSpeeds = new ArrayList<Double>();
+	private List<downloadSegment> segmentThread = new ArrayList<downloadSegment>();
+	
+	//private List<Long> segmentProgress = new ArrayList<Long>();
+	
 	private volatile long downloaded = 0;
+	private volatile boolean okToMerge = true, downloading = true;
+	private int transferRefreshRate = 200;			/* update transfer speed in 200 ms */
 	
 	public Downloader(DownloadUnit dUnit) {
 		this.dUnit = dUnit;
@@ -33,44 +32,8 @@ public class Downloader extends Thread{
 			URIExplore uri = new URIExplore((String)dUnit.getProperty(DownloadUnit.TableField.ORIGIN));
 			dUnit.setProperty(DownloadUnit.TableField.URL, (String)uri.finalURI);
 		}
-		finalURI = (String)dUnit.getProperty(DownloadUnit.TableField.URL);
-		destPath = (String)dUnit.getProperty(DownloadUnit.TableField.FOLDER);
 	}
-	
-	/* Sets the filename for a file at given URL */
-	private void setfileName(){
-		String disposition = con.getHeaderField("Content-Disposition");
-		String contentType = con.getContentType();
 
-		if(disposition != null){
-			int index = disposition.indexOf("filename=");
-			if (index > 0){
-				fileName = disposition.substring(index+9, disposition.length());
-				if(fileName.substring(0, 1).equals("\""))
-					fileName = fileName.substring(1,fileName.length()-1);
-			}
-		}
-		else if(contentType.split(";")[0].equals("text/html"))
-			fileName = "index.html";
-		else
-			fileName = finalURI.substring(finalURI.lastIndexOf("/") + 1, finalURI.length());
-		dUnit.setProperty(DownloadUnit.TableField.FILENAME, (String)fileName);
-	}
-	
-	/* Sets up a connection to the given finalURI */
-	private HttpURLConnection makeConnection(){
-		try{
-			/* support for proxy connections */
-			if(ConnectionProxy.proxyHTTP != null)
-				return (HttpURLConnection) new URL(finalURI).openConnection(ConnectionProxy.proxyHTTP);
-			else
-				return (HttpURLConnection) new URL(finalURI).openConnection();
-		}catch(Exception e){
-			Logger.log(Logger.Status.ERR_CONN, e.getMessage());
-			return null;
-		}
-	}
-	
 	/* Setup the download parameters */
 	public void run(){
 		/* prevent further redirects */
@@ -84,15 +47,7 @@ public class Downloader extends Thread{
 					con.setRequestMethod("HEAD");
 					
 					/* set file size (in bytes) and name */
-					fileSize = con.getContentLength();
-					if(fileSize != -1){
-						dUnit.setProperty(DownloadUnit.TableField.SIZE, fileSize+"");
-					}
-					else{
-						dUnit.setProperty(DownloadUnit.TableField.SIZE, "N/A");
-					}
-					/* set file size */
-					dUnit.sizeLong = fileSize;
+					dUnit.sizeLong = con.getContentLengthLong();
 					
 					int responseCode = con.getResponseCode();
 					if(responseCode == HttpURLConnection.HTTP_OK){
@@ -100,47 +55,102 @@ public class Downloader extends Thread{
 						/* Download in segments if server supports Accept-Ranges header */
 						String rangeSupport = con.getHeaderField("Accept-Ranges");
 						if (rangeSupport != null){
-							acceptRanges = true;
 							dUnit.setProperty(DownloadUnit.TableField.RESUME, true);
 						}
 						con.disconnect();
 					}
 				}
 			}catch(Exception e){
-				Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+				Logger.log(Logger.Status.ERR_CONN, "First run "+e.getMessage());
 				dUnit.statusEnum = DownloadUnit.Status.ERROR;
 				dUnit.setProperty(DownloadUnit.TableField.STATUS, "Connection Error");
 			}
 		}
-		/* retrieve existing information */
-		else{
-			fileName = (String)dUnit.getProperty(DownloadUnit.TableField.FILENAME);
-			fileSize = dUnit.sizeLong;
-			acceptRanges = (boolean)dUnit.getProperty(DownloadUnit.TableField.RESUME);
-		}
+
+		/* update filesize in GUI */
+		if(dUnit.sizeLong > 0)
+			dUnit.setProperty(DownloadUnit.TableField.SIZE, polishSize(dUnit.sizeLong,""));
+		else
+			dUnit.setProperty(DownloadUnit.TableField.SIZE, "--");
 		
 		/* start processing */
 		buildSegments();
 		startDownloading();
 	}
+
+	
+	/* Sets the filename for a file at given URL */
+	private void setfileName(){
+		String disposition = con.getHeaderField("Content-Disposition");
+		String contentType = con.getContentType();
+		String fileName = "";
+
+		if(disposition != null){
+			int index = disposition.indexOf("filename=");
+			if (index > 0){
+				fileName = disposition.substring(index+9, disposition.length());
+				if(fileName.substring(0, 1).equals("\""))
+					fileName = fileName.substring(1,fileName.length()-1);
+			}
+		}
+		else if(contentType.split(";")[0].equals("text/html"))
+			fileName = "index.html";
+		else{
+			String finalURI = (String)dUnit.getProperty(DownloadUnit.TableField.URL);
+			fileName = finalURI.substring(finalURI.lastIndexOf("/") + 1, finalURI.length());
+		}
+		dUnit.setProperty(DownloadUnit.TableField.FILENAME, fileName);
+	}
+	
+	/* Sets up a connection to the given finalURI */
+	private HttpURLConnection makeConnection(){
+		try{
+			/* support for proxy connections */
+			String finalURI = (String)dUnit.getProperty(DownloadUnit.TableField.URL);
+			if(ConnectionProxy.proxyHTTP != null)
+				return (HttpURLConnection) new URL(finalURI).openConnection(ConnectionProxy.proxyHTTP);
+			else
+				return (HttpURLConnection) new URL(finalURI).openConnection();
+		}catch(Exception e){
+			Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+			return null;
+		}
+	}
+
+	/* returns a string with suitable units, precision = 2  */
+	private String polishSize(long sizeBytes, String suffix){
+		double polishedSize = sizeBytes;
+		String unit = "B";
+		if(polishedSize>1024){
+			polishedSize /= 1024;
+			unit = "KB";
+		}
+		if(polishedSize>1024){
+			polishedSize /= 1024;
+			unit = "MB";
+		}
+		if(polishedSize>1024){
+			polishedSize /= 1024;
+			unit = "GB";
+		}
+		if(polishedSize>1024){
+			polishedSize /= 1024;
+			unit = "TB";
+		}
+		polishedSize = Math.round(polishedSize*100)/100.0d;
+		return polishedSize+" "+unit+suffix;
+	}
 	
 	public void pauseDownload(){
 		for(int i=0;i<segmentThread.size();++i)
-			segmentThread.get(i).suspend();
+			segmentThread.get(i).stopDownload();
 		dUnit.statusEnum = DownloadUnit.Status.PAUSED;
 		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Paused");
 	}
 	
-	public void resumeDownload(){
-		for(int i=0;i<segmentThread.size();++i)
-			segmentThread.get(i).resume();
-		dUnit.statusEnum = DownloadUnit.Status.DOWNLOADING;
-		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Downloading");
-	}
-	
 	private void buildSegments(){
 		if(dUnit.statusEnum == DownloadUnit.Status.QUEUED){
-			if(acceptRanges){
+			if((boolean)dUnit.getProperty(DownloadUnit.TableField.RESUME)){
 				numSegments = 5;				//TODO: Build segmentation logic
 				dUnit.setProperty(DownloadUnit.TableField.RESUME, true);
 			}
@@ -152,42 +162,59 @@ public class Downloader extends Thread{
 		
 		/* populate progress list */
 		if(dUnit.statusEnum == DownloadUnit.Status.QUEUED){			/* for new downloads */
-			for(int i=0;i<numSegments;++i){
-				segmentProgress.add((long)0);
+			for(int i=0;i<numSegments;++i)
 				dUnit.chunks.add((long)0);
-			}
 		}
 		else{
+			downloaded = 0;
 			for(int i=0;i<numSegments;++i)
-				segmentProgress.add((long)dUnit.chunks.get(i));
+				downloaded += (long)dUnit.chunks.get(i);
 		}
 		
 		long segmentSize = -1;
-		if(fileSize != -1){
-			segmentSize = fileSize/numSegments;
-			if(fileSize%numSegments != 0)
+		if(dUnit.sizeLong != -1){
+			segmentSize = dUnit.sizeLong/numSegments;
+			if(dUnit.sizeLong%numSegments != 0)
 				segmentSize += 1;
 		}
 		
 		/* create segment sizes */
 		for(int i=0;i<numSegments-1;++i)
 			segmentSizes.add((long)segmentSize);
-		segmentSizes.add((long)(fileSize - (segmentSize*(numSegments-1))));
+		segmentSizes.add((long)(dUnit.sizeLong - (segmentSize*(numSegments-1))));
 		
 		/* create downloader threads for downloading */
 		long startByte = 0;
 		for(int i=0;i<numSegments;++i){
-			Thread t = new downloadSegment(i, startByte+segmentProgress.get(i));
+			segmentSpeeds.add((double)0);
+			downloadSegment t = new downloadSegment(i, startByte+dUnit.chunks.get(i));
 			segmentThread.add(t);
 			startByte += segmentSizes.get(i);
 		}
+		
+		/* thread for updating the download speed */
+		new Thread(){
+			public void run(){
+				while(downloading){
+					try {
+						long speed = 0;
+						for(int i=0;i<segmentSpeeds.size();++i)
+							speed += segmentSpeeds.get(i);
+						dUnit.setProperty(DownloadUnit.TableField.TRANSFER_RATE, polishSize(speed,"ps"));
+						sleep(transferRefreshRate);
+					} catch (InterruptedException e) {
+						Logger.log(Logger.Status.ERR_THREAD, "Transfer rate update thread: "+e.getMessage());
+					}
+				}
+			}
+		}.start();
 	}
 	
 	private void startDownloading(){
 		dUnit.statusEnum = DownloadUnit.Status.DOWNLOADING;
 		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Downloading");
 		/* create temporary file */
-		File file = new File(destPath+File.separator+fileName);
+		File file = new File((String)dUnit.getProperty(DownloadUnit.TableField.FOLDER)+File.separator+(String)dUnit.getProperty(DownloadUnit.TableField.FILENAME));
 		try{
 			file.createNewFile();
 		}catch(Exception e){
@@ -207,17 +234,19 @@ public class Downloader extends Thread{
 				Logger.log(Logger.Status.ERR_THREAD, e.getMessage());
 			}
 		}
-		if(numSegments>1)
-			mergeSegments();
+		downloading = false;
 		
-		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Completed");
+		if(numSegments>1 && okToMerge)
+			mergeSegments();
+		if(okToMerge)
+			dUnit.setProperty(DownloadUnit.TableField.STATUS, "Completed");
 	}
 	
 	/* Merge the downloaded segments into one file and deletes them */
 	private void mergeSegments(){
 		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Merging");
-		
-		String filesavePath = destPath + File.separator + fileName;
+		String fileName = (String)dUnit.getProperty(DownloadUnit.TableField.FILENAME);
+		String filesavePath = (String)dUnit.getProperty(DownloadUnit.TableField.FOLDER) + File.separator + fileName;
 		try {
 			FileOutputStream finalFile = new FileOutputStream(filesavePath);
 			FileInputStream inputSegment;
@@ -249,11 +278,19 @@ public class Downloader extends Thread{
 		private int segNo;
 		private long startByte;
 		
+		private boolean running = true;
+		
 		downloadSegment(int segNo, long startByte) {
-			segmentName = fileName + ".part" + segNo;
+			segmentName = (String)dUnit.getProperty(DownloadUnit.TableField.FILENAME) + ".part" + segNo;
 			segConnection = makeConnection();
 			this.startByte = startByte;
 			this.segNo = segNo;
+		}
+		
+		/* change running flag */
+		public void stopDownload(){
+			running = false;
+			okToMerge = false;
 		}
 		
 		/* Thread downloads a particular range of file from server on an independent connection */
@@ -261,18 +298,18 @@ public class Downloader extends Thread{
 			try{
 				segConnection.setRequestMethod("GET");
 				segConnection.setReadTimeout(readTimeout);
-				if(acceptRanges){
-					if(fileSize != -1)
-						segConnection.setRequestProperty("Range", "bytes=" + startByte + "-" + (startByte-segmentProgress.get(segNo)+segmentSizes.get(segNo)-1));
+				if((boolean)dUnit.getProperty(DownloadUnit.TableField.RESUME)){
+					if(dUnit.sizeLong != -1)
+						segConnection.setRequestProperty("Range", "bytes=" + startByte + "-" + (startByte-dUnit.chunks.get(segNo)+segmentSizes.get(segNo)-1));
 					else
-						segConnection.setRequestProperty("Range", "bytes="+segmentProgress.get(segNo)+"-");
+						segConnection.setRequestProperty("Range", "bytes="+dUnit.chunks.get(segNo)+"-");
 				}
 				
 				InputStream inputStream = segConnection.getInputStream();
 				/* Path where segment is saved */
 				String segmentsavePath = Main.tempFolderPath + File.separator + segmentName;
 				if(numSegments == 1){
-					segmentsavePath = destPath + File.separator + fileName;
+					segmentsavePath = (String)dUnit.getProperty(DownloadUnit.TableField.FOLDER) + File.separator + (String)dUnit.getProperty(DownloadUnit.TableField.FILENAME);
 				}
 				
 				/* append bytes to output stream */
@@ -282,22 +319,27 @@ public class Downloader extends Thread{
 				long readRemaining = segmentSizes.get(segNo);
 				int bytesRead = -1;
 				byte[] buffer = new byte[bufferSize];
-
+				Clock clock = new Clock();
+				clock.startTimer();
 				while((bytesRead = inputStream.read(buffer)) != -1){
-					if(fileSize > 0){
+					long lap = clock.getLapElapsedTime();
+					if(!running)
+						break;
+					if(dUnit.sizeLong > 0){
 						readRemaining -= bytesRead;				/* decrement remaining bytes to read */
 						/* garbage if more bytes are read than needed */
-						
 						if(readRemaining < 0)
 							bytesRead = (int)readRemaining+bytesRead;
 					}
-					downloaded += bytesRead;
 					outputStream.write(buffer, 0, bytesRead);
-					long update = segmentProgress.get(segNo) + bytesRead;
+					if(lap>0)
+						segmentSpeeds.set(segNo, (double)(bytesRead*1000)/lap);
 					
-					segmentProgress.set(segNo, update);
+					downloaded += bytesRead;
+					long update = dUnit.chunks.get(segNo) + bytesRead;
 					dUnit.chunks.set(segNo, update);
-					dUnit.setProperty(DownloadUnit.TableField.PROGRESS, (double)downloaded/fileSize);
+					if(dUnit.sizeLong>0)
+						dUnit.setProperty(DownloadUnit.TableField.PROGRESS, (double)downloaded/dUnit.sizeLong);
 				}
 				
 				outputStream.close();
