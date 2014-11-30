@@ -2,6 +2,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.util.List;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -26,22 +27,24 @@ public class JSON {
 	public static String dumpPath = System.getProperty("user.home")+File.separator+"Downloads";
 	
 	@SuppressWarnings("unchecked")
-	public static void buildAndDumpJSON(DownloadUnit dUnit){
+	public static void dumpDownload(DownloadUnit dUnit){
 		JSONObject jsonData = new JSONObject();
 		
-		/* populate standard download related info  */
+		/* populate static (one-time set) download related info  */
 		jsonData.put("uid", dUnit.getUID());
+		jsonData.put("size", dUnit.sizeLong);
+		jsonData.put("resume", dUnit.resumable);
+		
 		jsonData.put("filename", dUnit.getProperty(DownloadUnit.TableField.FILENAME));
 		jsonData.put("origin", dUnit.getProperty(DownloadUnit.TableField.ORIGIN));
 		jsonData.put("url", dUnit.getProperty(DownloadUnit.TableField.URL));
 		jsonData.put("folder", dUnit.getProperty(DownloadUnit.TableField.FOLDER));
-		jsonData.put("size", dUnit.getProperty(DownloadUnit.TableField.SIZE));
-		jsonData.put("status", dUnit.getProperty(DownloadUnit.TableField.STATUS));
+		jsonData.put("type", dUnit.getProperty(DownloadUnit.TableField.TYPE));
 		jsonData.put("segments", dUnit.getProperty(DownloadUnit.TableField.SEGMENTS));
-		jsonData.put("resume", dUnit.getProperty(DownloadUnit.TableField.RESUME));
-		jsonData.put("start", dUnit.getProperty(DownloadUnit.TableField.START));
-		jsonData.put("scheduled", dUnit.getProperty(DownloadUnit.TableField.SCHEDULED));
-		jsonData.put("finish", dUnit.getProperty(DownloadUnit.TableField.FINISH));
+		
+		/* poulate dynamic download properties */
+		jsonData.put("status", dUnit.getProperty(DownloadUnit.TableField.STATUS));
+		jsonData.put("chunks", dUnit.chunks);
 		
 		try{
 			File dataDump = new File(dumpPath+File.separator+dUnit.getUID()+".data");
@@ -66,24 +69,69 @@ public class JSON {
 			JSONObject jsonData = (JSONObject)parser.parse(new FileReader(path));
 			DownloadUnit dUnit= new DownloadUnit(null);
 			
-			/* extract data from JSON and set download unit properties */
+			/* static download properties */
 			dUnit.setUID((long)jsonData.get("uid"));
+			dUnit.sizeLong = (long)jsonData.get("size");
+			dUnit.resumable = (boolean)jsonData.get("resume");
+			
 			dUnit.setProperty(DownloadUnit.TableField.FILENAME, jsonData.get("filename"));
 			dUnit.setProperty(DownloadUnit.TableField.ORIGIN, jsonData.get("origin"));
 			dUnit.setProperty(DownloadUnit.TableField.URL, jsonData.get("url"));
 			dUnit.setProperty(DownloadUnit.TableField.FOLDER, jsonData.get("folder"));
-			dUnit.setProperty(DownloadUnit.TableField.SIZE, jsonData.get("size"));
-			dUnit.setProperty(DownloadUnit.TableField.STATUS, jsonData.get("status"));
+			dUnit.setProperty(DownloadUnit.TableField.SIZE, polishSize(dUnit.sizeLong));
+			dUnit.setProperty(DownloadUnit.TableField.TYPE, jsonData.get("type"));
 			dUnit.setProperty(DownloadUnit.TableField.SEGMENTS, jsonData.get("segments"));
-			dUnit.setProperty(DownloadUnit.TableField.RESUME, jsonData.get("resume"));
+			String resumeCap = "No";
+			if(dUnit.resumable)
+				resumeCap = "Yes";
+			dUnit.setProperty(DownloadUnit.TableField.RESUME, resumeCap);
+			
+			/* set dynamic properties */
+			dUnit.setProperty(DownloadUnit.TableField.STATUS, jsonData.get("status"));
+			dUnit.chunks = (List<Long>) jsonData.get("chunks");
+			
+			/*
 			dUnit.setProperty(DownloadUnit.TableField.START, jsonData.get("start"));
 			dUnit.setProperty(DownloadUnit.TableField.SCHEDULED, jsonData.get("scheduled"));
 			dUnit.setProperty(DownloadUnit.TableField.FINISH, jsonData.get("finish"));
+			*/
 			
 			return dUnit;
 		}catch(Exception e){
 			Logger.log(Logger.Status.ERR_READ, e.getMessage());
 			return null;
 		}
+	}
+	
+	public static void loadDumps(final String folder){
+		for(final File file: (new File(folder)).listFiles()){
+			if(!file.isDirectory()){
+				Logger.debug("File: "+file.getName());
+			}
+		}
+	}
+	
+	/* returns a string with suitable units, precision = 2  */
+	private static String polishSize(long sizeBytes){
+		double polishedSize = sizeBytes;
+		String unit = "B";
+		if(polishedSize>1024){
+			polishedSize /= 1024;
+			unit = "KB";
+		}
+		if(polishedSize>1024){
+			polishedSize /= 1024;
+			unit = "MB";
+		}
+		if(polishedSize>1024){
+			polishedSize /= 1024;
+			unit = "GB";
+		}
+		if(polishedSize>1024){
+			polishedSize /= 1024;
+			unit = "TB";
+		}
+		polishedSize = Math.round(polishedSize*100)/100.0d;
+		return polishedSize+" "+unit;
 	}
 }
