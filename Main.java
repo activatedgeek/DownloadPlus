@@ -32,32 +32,31 @@ public class Main extends Application {
 	}
 	
 	private Button addbtn,playPausebtn,stopbtn;
-	private TableView<DownloadUnit> table = new TableView<DownloadUnit>();
+	private static TableView<DownloadUnit> table = new TableView<DownloadUnit>();
 	private String windowTitle = "Download++";
-	private int width = 800, height = 650;
+	private int width = 1000, height = 650;
 
 	@SuppressWarnings({"rawtypes"})
-	private TableColumn fileNameCol, sizeCol, statusCol, transferRateCol, progressCol, resumeCapCol, downloadedCol;
+	private TableColumn fileNameCol, sizeCol, statusCol, transferRateCol, percentageCol, progressCol, resumeCapCol, downloadedCol;
 	
 	private static final ObservableList<DownloadUnit> downloadList = FXCollections.observableArrayList();
 	private static final HashMap<Long, DownloadUnit> idToDunit = new HashMap<Long, DownloadUnit>();
 	private static final HashMap<Long, Downloader> idToDownloader = new HashMap<Long, Downloader>();
 	private static long uid = 0;
 	
-	private boolean paused = false;
+	//private boolean paused = false;
 	
-	public SplitPane infoPane = new SplitPane();
-	public GridPane gridPane = new GridPane();
-	Label fileNameLabel = new Label();
-	Label sizeLabel = new Label();
-	Label statusLabel = new Label();
-	Label fileTypeLabel = new Label();
-	Label filePathLabel = new Label();
+	public static SplitPane infoPane = new SplitPane();
+	public static GridPane gridPane = new GridPane();
+	static Label fileNameLabel = new Label();
+	static Label sizeLabel = new Label();
+	static Label statusLabel = new Label();
+	static Label fileTypeLabel = new Label();
+	static Label filePathLabel = new Label();
 	
-	final VBox topContainer = new VBox();
+	final static VBox topContainer = new VBox();
 	
 	public static void main(String[] args) {
-		//JSON.loadDumps(System.getProperty("user.home")+File.separator+"Downloads");
 		launch(args);
 	}
 	
@@ -67,6 +66,12 @@ public class Main extends Application {
 		initToolbarHandlers();
 		table.addEventHandler(MouseEvent.MOUSE_CLICKED, new TableClickHandler());
 		stage.show();
+		
+		stage.setOnCloseRequest(new EventHandler<WindowEvent>() {
+	          public void handle(WindowEvent we) {
+	        	  Logger.debug("Closing Windows");    
+				}
+	      });  
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -89,7 +94,7 @@ public class Main extends Application {
 		stopbtn = new Button();
 		
 		/*** Toolbar ***/
-		Image playimage = new Image(getClass().getResourceAsStream("images/play.png"));
+		Image playimage = new Image(getClass().getResourceAsStream("images/add.png"));
 		addbtn.setGraphic(new ImageView(playimage));
 		
 		Image pauseimage = new Image(getClass().getResourceAsStream("images/pause.png"));
@@ -122,13 +127,16 @@ public class Main extends Application {
 	    
 	    downloadedCol = new TableColumn("Downloaded");
 	    downloadedCol.setPrefWidth(120);
-	    		
+	    
+	    percentageCol = new TableColumn("Percentage");
+	    percentageCol.setPrefWidth(120);
+	    
 	    progressCol = new TableColumn("Progress");
-	    progressCol.setPrefWidth(130);
+	    progressCol.setPrefWidth(200);
 	    progressCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit, Double>("progress"));
 	    progressCol.setCellFactory(ProgressBarTableCell.<DownloadUnit> forTableColumn());
-        
-	    table.getColumns().addAll(fileNameCol, sizeCol, resumeCapCol, statusCol, transferRateCol, downloadedCol, progressCol);
+		        
+	    table.getColumns().addAll(fileNameCol, sizeCol, downloadedCol, percentageCol, progressCol, transferRateCol, resumeCapCol, statusCol);
         
 	    table.setItems(downloadList);
 	    topContainer.getChildren().addAll(table);
@@ -167,20 +175,25 @@ public class Main extends Application {
 				saveAs.setText(System.getProperty("user.home")+File.separator+"Downloads");
 				saveAs.setPrefColumnCount(20);
 				GridPane.setConstraints(saveAs, 0, 1);
-				//GridPane.setColumnSpan(saveAs, 0);
 				grid.getChildren().addAll(addURL, saveAs);
 
 		        Button okbtn = new Button("OK");
+		        okbtn.setPrefWidth(100);
 		        GridPane.setConstraints(okbtn, 1, 0);
 
 		        Button cancelbtn = new Button("Cancel");
+		        cancelbtn.setPrefWidth(100);
 		        GridPane.setConstraints(cancelbtn, 1, 1);
+		        
+		        Button browsebtn = new Button("Browse");
+		        browsebtn.setPrefWidth(100);
+		        GridPane.setConstraints(browsebtn, 0, 2);
 		  
 		        final Label label = new Label();
-		        GridPane.setConstraints(label, 0, 2);
+		        GridPane.setConstraints(label, 0, 3);
 		        GridPane.setColumnSpan(label, 1);
 		        
-		        grid.getChildren().addAll(okbtn,cancelbtn,label);
+		        grid.getChildren().addAll(okbtn,cancelbtn,browsebtn,label);
 		        
 		        // event when "OK" is clicked
 		        okbtn.setOnAction(new EventHandler<ActionEvent>() {
@@ -189,20 +202,23 @@ public class Main extends Application {
 		            public void handle(ActionEvent e) {
 		                if ((addURL.getText() != null && !addURL.getText().isEmpty())){
 		                    popup.close();
-		                    
-		                    new Thread(){
-		                    	public void run(){
-		                    		DownloadUnit dUnit = new DownloadUnit(addURL.getText());
-		                    		dUnit.setProperty(DownloadUnit.TableField.FOLDER, (String)saveAs.getText());
-		                    		dUnit.setUID(uid);
-		                    		idToDunit.put(uid, dUnit);
-		                    		Downloader dwnld = new Downloader(dUnit);
-		                    		idToDownloader.put(uid++, dwnld);
-		                    		
-		                    		downloadList.add(dUnit);
-				                    dwnld.start();
-		                    	}
-		                    }.start();
+		                    String[] batchList = (addURL.getText().split("\n"));
+		                    for(int i=0; i<batchList.length; ++i){
+		                    	final int index = i;
+			                    new Thread(){
+			                    	public void run(){
+			                    		DownloadUnit dUnit = new DownloadUnit(batchList[index]);
+			                    		dUnit.setProperty(DownloadUnit.TableField.FOLDER, (String)saveAs.getText());
+			                    		dUnit.setUID(uid);
+			                    		idToDunit.put(uid, dUnit);
+			                    		Downloader dwnld = new Downloader(dUnit);
+			                    		idToDownloader.put(uid++, dwnld);
+			                    		
+			                    		downloadList.add(dUnit);
+					                    dwnld.start();
+			                    	}
+			                    }.start();	
+		                    }
 		                    
 		                    fileNameCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("filename"));
 		                    sizeCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("size"));
@@ -210,6 +226,7 @@ public class Main extends Application {
 		                    transferRateCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("transferRate"));
 		                    resumeCapCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("resumeCap"));
 		                    downloadedCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("downloaded"));
+		                    percentageCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("percentage"));
 		                    
 		                    resumeCapCol.setCellFactory(new Callback<TableColumn, TableCell>() {
                                 public TableCell call(TableColumn param) {
@@ -237,6 +254,17 @@ public class Main extends Application {
 		            }
 		        });
 		        
+		        browsebtn.setOnAction(new EventHandler<ActionEvent>() {
+					@Override
+					public void handle(ActionEvent arg0) {
+						DirectoryChooser dc = new DirectoryChooser();
+						dc.setTitle("Browse Directory");
+						File file = dc.showDialog(null);
+						if(file!=null)
+							saveAs.setText(file.getPath());
+					}
+				});
+		        
 		        cancelbtn.setOnAction(new EventHandler<ActionEvent>() {
 					@Override
 					public void handle(ActionEvent arg0) {
@@ -253,12 +281,23 @@ public class Main extends Application {
 				DownloadUnit selected = (DownloadUnit)table.getSelectionModel().getSelectedItem();
 				//function/java file is called that contain the functionality for pause/stop
 				if(selected != null) {
-					if(!paused){
-						idToDownloader.get(selected.getUID()).pauseDownload();
-						paused = true;
+					
+					if (selected.getProperty(DownloadUnit.TableField.STATUS)=="Downloading") {
+						//update status
+						selected.setProperty(DownloadUnit.TableField.STATUS,"Paused");
+						//change button images
+						Image playimage = new Image(getClass().getResourceAsStream("images/play.png"));
+						playPausebtn.setGraphic(new ImageView(playimage));
 					}
+					else if (selected.getProperty(DownloadUnit.TableField.STATUS)=="Paused") {
+						//update status
+						selected.setProperty(DownloadUnit.TableField.STATUS,"Downloading");
+						//change button image
+						Image pauseimage = new Image(getClass().getResourceAsStream("images/pause.png"));
+						playPausebtn.setGraphic(new ImageView(pauseimage));
+					}
+					
 				}
-				
 			}
 		});
 		
@@ -266,13 +305,24 @@ public class Main extends Application {
 			@Override
 			public void handle(ActionEvent arg0) {
 				DownloadUnit selected = (DownloadUnit)table.getSelectionModel().getSelectedItem();
-				//function/java file is called that contain the functionality for pause/stop
+				fileNameLabel.setText("");
+				sizeLabel.setText("");
+				statusLabel.setText("");
+				fileTypeLabel.setText("");
+				filePathLabel.setText("");
+				
 				if(selected != null) {
-					downloadList.remove(selected);
-					
 					infoPane.getItems().removeAll(gridPane);
 					gridPane.getChildren().removeAll(fileNameLabel,sizeLabel,statusLabel,fileTypeLabel,filePathLabel);
 					topContainer.getChildren().remove(infoPane);
+					
+					/* destroy object and related temporary dependencies */
+					Downloader removed = idToDownloader.get(selected.getUID());
+					idToDownloader.remove(selected.getUID());
+					idToDunit.remove(selected.getUID());
+					downloadList.remove(selected);
+					
+					removed.destroyDownload();
 				}
 			}
 		});
@@ -290,12 +340,14 @@ public class Main extends Application {
 			gridPane.getChildren().removeAll(fileNameLabel, sizeLabel, statusLabel, fileTypeLabel, filePathLabel);
 			topContainer.getChildren().remove(infoPane);
 			
-			fileNameLabel.setText("File Name: "+(String)selected.getProperty(DownloadUnit.TableField.FILENAME));
-            sizeLabel.setText("File Size: "+(String)selected.getProperty(DownloadUnit.TableField.SIZE));
-            statusLabel.setText("Status: "+(String)selected.getProperty(DownloadUnit.TableField.STATUS));
-            fileTypeLabel.setText("File Type: "+(String)selected.getProperty(DownloadUnit.TableField.FILENAME));
-            filePathLabel.setText("File Location: "+(String)selected.getProperty(DownloadUnit.TableField.FOLDER));
-           
+			if(selected!=null){
+				fileNameLabel.setText("File Name: "+(String)selected.getProperty(DownloadUnit.TableField.FILENAME));
+            	sizeLabel.setText("File Size: "+(String)selected.getProperty(DownloadUnit.TableField.SIZE));
+            	statusLabel.setText("Status: "+(String)selected.getProperty(DownloadUnit.TableField.STATUS));
+            	fileTypeLabel.setText("File Type: "+(String)selected.getProperty(DownloadUnit.TableField.TYPE));
+            	filePathLabel.setText("File Location: "+(String)selected.getProperty(DownloadUnit.TableField.FOLDER));
+			}
+			
             GridPane.setConstraints(fileNameLabel, 0, 0);
             GridPane.setConstraints(sizeLabel, 0, 1);
             GridPane.setConstraints(statusLabel, 0, 2);
@@ -309,3 +361,4 @@ public class Main extends Application {
 		
 	}
 }
+
