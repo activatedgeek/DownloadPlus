@@ -3,6 +3,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import javafx.concurrent.Task;
 import javafx.beans.property.StringProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.SimpleIntegerProperty;
@@ -10,7 +11,7 @@ import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleObjectProperty;
 
-public class DownloadUnit /*extends Task<Void>*/ {
+public class DownloadUnit extends Task<Void> {
 	public enum TableField {
 		FILENAME,ORIGIN,URL,FOLDER,SIZE,STATUS,TRANSFER_RATE,
 		PROGRESS,SEGMENTS,RESUME,START,SCHEDULED,FINISH
@@ -121,6 +122,7 @@ public class DownloadUnit /*extends Task<Void>*/ {
     		break;
     	case PROGRESS:
     		progress.set((Double)value);
+    		updateProgress((Double)value, 1);
     		break;
     	case SEGMENTS:
     		segments.set((Integer)value);
@@ -158,36 +160,11 @@ public class DownloadUnit /*extends Task<Void>*/ {
     public StringProperty transferRateProperty(){
     	return transferRate;
     }
-    
-    /*
-	public void updateProgressBar(double percentage) {
-		this.updateProgress(ProgressIndicator.INDETERMINATE_PROGRESS, 1);
-		
-		if(percentage == 0) {
-			this.updateProgress(0,1);
-		}
-		else if (percentage > 0 && percentage < 100) {
-	        updateProgress((1.0 * percentage) / 100, 1);
-        }
-	    else if (percentage >= 100) {
-	    	this.updateProgress(1, 1);
-	    }
-	}
 
 	@Override
 	protected Void call() throws Exception {
-	      this.updateProgress(ProgressIndicator.INDETERMINATE_PROGRESS, 1);
-	      this.updateMessage("Waiting...");
-	      Thread.sleep(1000);
-	      this.updateMessage("Running...");
-	      for (int i = 0; i < 100; i++) {
-	        updateProgress((1.0 * i) / 100, 1);
-	        Thread.sleep(100);
-	      }
-	      this.updateMessage("Done");
-	      this.updateProgress(1, 1);
-	      return null;
+		// TODO Auto-generated method stub
+		return null;
 	}
-	*/
     
 }
