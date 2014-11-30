@@ -1,14 +1,12 @@
 import java.io.File;
 import java.util.HashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 
 import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.stage.*;
 import javafx.scene.control.*;
@@ -34,16 +32,30 @@ public class Main extends Application {
 	private Button addbtn,playPausebtn,stopbtn;
 	private TableView<DownloadUnit> table = new TableView<DownloadUnit>();
 	private String windowTitle = "Download++";
-	private int width = 700, height = 525;
+	private int width = 800, height = 650;
 
 	@SuppressWarnings({"rawtypes"})
-	private TableColumn fileNameCol, sizeCol, statusCol, transferRateCol, progressCol;
+	private TableColumn fileNameCol, sizeCol, statusCol, transferRateCol, progressCol, resumeCapCol, downloadedCol;
 	
 	private static final ObservableList<DownloadUnit> downloadList = FXCollections.observableArrayList();
 	private static final HashMap<Long, DownloadUnit> idToDunit = new HashMap<Long, DownloadUnit>();
+	private static final HashMap<Long, Downloader> idToDownloader = new HashMap<Long, Downloader>();
 	private static long uid = 0;
 	
+	private boolean paused = false;
+	
+	public SplitPane infoPane = new SplitPane();
+	public GridPane gridPane = new GridPane();
+	Label fileNameLabel = new Label();
+	Label sizeLabel = new Label();
+	Label statusLabel = new Label();
+	Label fileTypeLabel = new Label();
+	Label filePathLabel = new Label();
+	
+	final VBox topContainer = new VBox();
+	
 	public static void main(String[] args) {
+		//JSON.loadDumps(System.getProperty("user.home")+File.separator+"Downloads");
 		launch(args);
 	}
 	
@@ -51,6 +63,7 @@ public class Main extends Application {
 	public void start(Stage stage) throws Exception {
 		initGUI(stage);
 		initToolbarHandlers();
+		table.addEventHandler(MouseEvent.MOUSE_CLICKED, new TableClickHandler());
 		stage.show();
 	}
 
@@ -59,37 +72,19 @@ public class Main extends Application {
 		BorderPane root = new BorderPane();
 		stage.setTitle(windowTitle);
 		Scene scene = new Scene(root,width,height);
+		stage.setMinWidth(width);
+		stage.setMinHeight(height);
 	    stage.setScene(scene);
+	    stage.sizeToScene();
 	    
-		final VBox topContainer = new VBox();  //Creates a container to hold all Menu Objects
-		MenuBar mainMenu = new MenuBar();   //Creates our main menu to hold our Sub-Menus
 		ToolBar toolBar = new ToolBar();  //Creates our tool-bar to hold the buttons
 		
-		topContainer.getChildren().addAll(mainMenu,toolBar);
+		topContainer.getChildren().addAll(toolBar);
 		root.setTop(topContainer);
 		
 		addbtn = new Button();
 		playPausebtn = new Button();
 		stopbtn = new Button();
-		
-		/*** Adding menu items ***/
-		
-		Menu file = new Menu("File"); 							/*** File Menu ***/
-		MenuItem stopDownload = new MenuItem("Stop Download");
-		MenuItem remove = new MenuItem("Remove");
-		file.getItems().addAll(stopDownload,remove);
-		
-		Menu downloadMenu = new Menu("Downloads");				/*** Downloads Menu ***/
-		MenuItem pauseAll = new MenuItem("Pause All");
-		MenuItem stopAll = new MenuItem("Stop All");
-		MenuItem scheduler = new MenuItem("Scheduler");
-		downloadMenu.getItems().addAll(pauseAll,stopAll,scheduler);
-		
-		Menu help = new Menu("Help");							/*** Help Menu ***/
-		MenuItem helpmenu = new MenuItem("Options");
-		help.getItems().addAll(helpmenu);
-		
-		mainMenu.getMenus().addAll(file, downloadMenu, help);
 		
 		/*** Toolbar ***/
 		Image playimage = new Image(getClass().getResourceAsStream("images/play.png"));
@@ -114,36 +109,27 @@ public class Main extends Application {
 		sizeCol = new TableColumn("Size");
 		sizeCol.setPrefWidth(100);
 		
+		resumeCapCol = new TableColumn("Resumable");
+		resumeCapCol.setPrefWidth(100);
+		
 	    statusCol = new TableColumn("Status");
 	    statusCol.setPrefWidth(100);
 	     
 	    transferRateCol = new TableColumn("Transfer Rate");
 	    transferRateCol.setPrefWidth(100);
-	     
+	    
+	    downloadedCol = new TableColumn("Downloaded");
+	    downloadedCol.setPrefWidth(120);
+	    		
 	    progressCol = new TableColumn("Progress");
 	    progressCol.setPrefWidth(130);
 	    progressCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit, Double>("progress"));
 	    progressCol.setCellFactory(ProgressBarTableCell.<DownloadUnit> forTableColumn());
         
-	    table.getColumns().addAll(fileNameCol, sizeCol,transferRateCol,statusCol,progressCol);
+	    table.getColumns().addAll(fileNameCol, sizeCol, resumeCapCol, statusCol, transferRateCol, downloadedCol, progressCol);
         
 	    table.setItems(downloadList);
 	    topContainer.getChildren().addAll(table);
-	    
-	    /*
-	    ExecutorService executor = Executors.newFixedThreadPool(table.getItems().size(), new ThreadFactory() {
-	    	@Override
-	    	public Thread newThread(Runnable r) {
-	    		Thread t = new Thread(r);
-	    		t.setDaemon(true);
-	    		return t;
-	    	}
-	    });
-
-	    for (DownloadUnit task : table.getItems()) {
-	    	executor.execute(task);
-	    }
-	    */
         
 	    stage.setScene(scene);
 	}
@@ -207,10 +193,12 @@ public class Main extends Application {
 		                    		DownloadUnit dUnit = new DownloadUnit(addURL.getText());
 		                    		dUnit.setProperty(DownloadUnit.TableField.FOLDER, (String)saveAs.getText());
 		                    		dUnit.setUID(uid);
-		                    		idToDunit.put(uid++, dUnit);
-		                    		downloadList.add(dUnit);
+		                    		idToDunit.put(uid, dUnit);
+		                    		Downloader dwnld = new Downloader(dUnit);
+		                    		idToDownloader.put(uid++, dwnld);
 		                    		
-				                    (new Downloader(dUnit)).start();
+		                    		downloadList.add(dUnit);
+				                    dwnld.start();
 		                    	}
 		                    }.start();
 		                    
@@ -240,7 +228,11 @@ public class Main extends Application {
 			public void handle(ActionEvent arg0) {
 				DownloadUnit selected = (DownloadUnit)table.getSelectionModel().getSelectedItem();
 				//function/java file is called that contain the functionality for pause/stop
-				if(selected != null) {					
+				if(selected != null) {
+					if(!paused){
+						idToDownloader.get(selected.getUID()).pauseDownload();
+						paused = true;
+					}
 				}
 				
 			}
@@ -252,13 +244,43 @@ public class Main extends Application {
 				DownloadUnit selected = (DownloadUnit)table.getSelectionModel().getSelectedItem();
 				//function/java file is called that contain the functionality for pause/stop
 				if(selected != null) {
-					System.out.println(selected.getProperty(DownloadUnit.TableField.STATUS)); 					
+					downloadList.remove(selected);
+					
+					infoPane.getItems().removeAll(gridPane);
+					gridPane.getChildren().removeAll(fileNameLabel,sizeLabel,statusLabel,fileTypeLabel,filePathLabel);
+					topContainer.getChildren().remove(infoPane);
 				}
 			}
 		});
 	}
+	
+	class TableClickHandler implements EventHandler<MouseEvent>{
+
+		@Override
+		public void handle(MouseEvent event) {
+			TableView tab = (TableView)event.getSource();
+			DownloadUnit selected = (DownloadUnit)tab.getSelectionModel().getSelectedItem();
+			
+			infoPane.getItems().removeAll(gridPane);
+			gridPane.getChildren().removeAll(fileNameLabel, sizeLabel, statusLabel, fileTypeLabel, filePathLabel);
+			topContainer.getChildren().remove(infoPane);
+			
+			fileNameLabel.setText("File Name: "+(String)selected.getProperty(DownloadUnit.TableField.FILENAME));
+            sizeLabel.setText("File Size: "+(String)selected.getProperty(DownloadUnit.TableField.SIZE));
+            statusLabel.setText("Status: "+(String)selected.getProperty(DownloadUnit.TableField.STATUS));
+            fileTypeLabel.setText("File Type: "+(String)selected.getProperty(DownloadUnit.TableField.FILENAME));
+            filePathLabel.setText("File Location: "+(String)selected.getProperty(DownloadUnit.TableField.FOLDER));
+           
+            GridPane.setConstraints(fileNameLabel, 0, 0);
+            GridPane.setConstraints(sizeLabel, 0, 1);
+            GridPane.setConstraints(statusLabel, 0, 2);
+            GridPane.setConstraints(fileTypeLabel, 0, 3);
+            GridPane.setConstraints(filePathLabel, 0, 4);
+
+            gridPane.getChildren().addAll(fileNameLabel, sizeLabel, statusLabel, fileTypeLabel,filePathLabel);                
+            infoPane.getItems().add(gridPane);
+            topContainer.getChildren().add(infoPane);
+		}
+		
+	}
 }
-
-
-
-
