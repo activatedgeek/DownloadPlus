@@ -1,5 +1,4 @@
 import java.io.File;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -9,7 +8,6 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleBooleanProperty;
-import javafx.beans.property.SimpleObjectProperty;
 
 public class DownloadUnit extends Task<Void> {
 	public enum TableField {
@@ -21,40 +19,49 @@ public class DownloadUnit extends Task<Void> {
 		DOWNLOADING, COMPLETED, ERROR
 	}
 	
+	/* download related static information */
 	private long uid;
-	public Status statusEnum;
 	public long sizeLong;
-	public List<Long> chunks;
 	
 	private SimpleStringProperty filename;
 	private SimpleStringProperty origin;
 	private SimpleStringProperty url;
 	private SimpleStringProperty folder;
 	private SimpleStringProperty size;
+    private SimpleIntegerProperty segments;
+    private SimpleBooleanProperty resume;
+	
+    /* download related dynamic information */
+	public Status statusEnum;
+	public List<Long> chunks;				/* current downloaded bytes in each segment */
+	
 	private SimpleStringProperty status;
 	private SimpleStringProperty transferRate;
 	private SimpleDoubleProperty progress;
-    private SimpleIntegerProperty segments;
-    private SimpleBooleanProperty resume;
-    private SimpleObjectProperty<LocalDateTime> start, scheduled, finish;
+    //private SimpleObjectProperty<LocalDateTime> start, scheduled, finish;
 
     public DownloadUnit (String uri){
-    	statusEnum = Status.QUEUED;
-    	chunks = new ArrayList<Long>();
-    	
+    	/* setting default static elements */
     	filename = new SimpleStringProperty(uri);
     	origin = new SimpleStringProperty(uri);
     	url = new SimpleStringProperty(uri);
     	folder = new SimpleStringProperty(System.getProperty("user.home")+File.separator+"/Downloads");
-    	size = new SimpleStringProperty("0 B");
-    	status = new SimpleStringProperty("Waiting");
-    	transferRate = new SimpleStringProperty("0 Bps");
-    	progress = new SimpleDoubleProperty(0);
-    	segments = new SimpleIntegerProperty(0);
+    	size = new SimpleStringProperty("--");
+    	segments = new SimpleIntegerProperty(1);
     	resume = new SimpleBooleanProperty(false);
+    	
+    	/* setting default dynamic elements */
+    	statusEnum = Status.QUEUED;
+    	chunks = new ArrayList<Long>();
+    	
+    	status = new SimpleStringProperty("Queued");
+    	transferRate = new SimpleStringProperty("--");
+    	progress = new SimpleDoubleProperty(0);
+    	/*
     	start = new SimpleObjectProperty<LocalDateTime>();
     	scheduled = new SimpleObjectProperty<LocalDateTime>();
     	finish = new SimpleObjectProperty<LocalDateTime>();
+    	*/
     }
     
     public void setUID(long uid){
@@ -87,14 +94,17 @@ public class DownloadUnit extends Task<Void> {
     		return segments.get();
     	case RESUME:
     		return resume.get();
+    	/*
     	case START:
     		return start.get();
     	case SCHEDULED:
     		return scheduled.get();
     	case FINISH:
     		return finish.get();
+    	*/
+    	default:
+    		return null;
     	}
-    	return null;
     }
 
     public void setProperty(TableField tf, Object value){
@@ -130,6 +140,7 @@ public class DownloadUnit extends Task<Void> {
     	case RESUME:
     		resume.set((boolean)value);
     		break;
+    	/*
     	case START:
     		start.set((LocalDateTime)value);
     		break;
@@ -139,6 +150,7 @@ public class DownloadUnit extends Task<Void> {
     	case FINISH:
     		finish.set((LocalDateTime)value);
     		break;
+    	*/
     	default:
     		break;
     	}
@@ -163,7 +175,6 @@ public class DownloadUnit extends Task<Void> {
 
 	@Override
 	protected Void call() throws Exception {
-		// TODO Auto-generated method stub
 		return null;
 	}
     
