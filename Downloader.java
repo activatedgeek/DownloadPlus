@@ -24,6 +24,7 @@ public class Downloader extends Thread{
 	public String fileName;
 	public long fileSize;
 	private boolean acceptRanges = false;
+	private volatile long downloaded = 0;
 	
 	public Downloader(DownloadUnit dUnit) {
 		this.dUnit = dUnit;
@@ -123,6 +124,20 @@ public class Downloader extends Thread{
 		startDownloading();
 	}
 	
+	public void pauseDownload(){
+		for(int i=0;i<segmentThread.size();++i)
+			segmentThread.get(i).suspend();
+		dUnit.statusEnum = DownloadUnit.Status.PAUSED;
+		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Paused");
+	}
+	
+	public void resumeDownload(){
+		for(int i=0;i<segmentThread.size();++i)
+			segmentThread.get(i).resume();
+		dUnit.statusEnum = DownloadUnit.Status.DOWNLOADING;
+		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Downloading");
+	}
+	
 	private void buildSegments(){
 		if(dUnit.statusEnum == DownloadUnit.Status.QUEUED){
 			if(acceptRanges){
@@ -169,6 +184,7 @@ public class Downloader extends Thread{
 	}
 	
 	private void startDownloading(){
+		dUnit.statusEnum = DownloadUnit.Status.DOWNLOADING;
 		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Downloading");
 		/* create temporary file */
 		File file = new File(destPath+File.separator+fileName);
@@ -266,19 +282,22 @@ public class Downloader extends Thread{
 				long readRemaining = segmentSizes.get(segNo);
 				int bytesRead = -1;
 				byte[] buffer = new byte[bufferSize];
-				
+
 				while((bytesRead = inputStream.read(buffer)) != -1){
 					if(fileSize > 0){
 						readRemaining -= bytesRead;				/* decrement remaining bytes to read */
 						/* garbage if more bytes are read than needed */
 						
 						if(readRemaining < 0)
-							bytesRead = (int)readRemaining+bytesRead;	
+							bytesRead = (int)readRemaining+bytesRead;
 					}
+					downloaded += bytesRead;
 					outputStream.write(buffer, 0, bytesRead);
 					long update = segmentProgress.get(segNo) + bytesRead;
+					
 					segmentProgress.set(segNo, update);
 					dUnit.chunks.set(segNo, update);
+					dUnit.setProperty(DownloadUnit.TableField.PROGRESS, (double)downloaded/fileSize);
 				}
 				
 				outputStream.close();
