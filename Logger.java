@@ -9,7 +9,8 @@ public class Logger {
 	/* enumerations for errors, check the map below for message strings */
 	public enum Status{
 		ERR_CONN, ERR_HTTP, ERR_REDIRECT, ERR_CLOCK,
-		ERR_DUMP, ERR_READ, ERR_MERGE
+		ERR_DUMP, ERR_READ, ERR_MERGE,
+		ERR_PAUSE, ERR_RESUME, ERR_THREAD, ERR_FILE
 	}
 	private static final Map<Status, String> errorMap = new HashMap<Status,String>();
 	static{
@@ -20,6 +21,10 @@ public class Logger {
 		errorMap.put(Status.ERR_DUMP, "Error dumpting data.");
 		errorMap.put(Status.ERR_READ, "Error reading data.");
 		errorMap.put(Status.ERR_MERGE, "Error merging part files.");
+		errorMap.put(Status.ERR_PAUSE, "Error pausing thread.");
+		errorMap.put(Status.ERR_RESUME, "Error resuming thread.");
+		errorMap.put(Status.ERR_THREAD, "Error in thread operation.");
+		errorMap.put(Status.ERR_FILE, "Error in processing/creating file.");
 	}
 	
 	public static void enableLog(){
