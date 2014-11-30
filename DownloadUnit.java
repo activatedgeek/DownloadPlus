@@ -7,12 +7,12 @@ import javafx.beans.property.StringProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleDoubleProperty;
-import javafx.beans.property.SimpleBooleanProperty;
 
 public class DownloadUnit extends Task<Void> {
 	public enum TableField {
 		FILENAME,ORIGIN,URL,FOLDER,SIZE,STATUS,TRANSFER_RATE,
-		PROGRESS,SEGMENTS,RESUME,START,SCHEDULED,FINISH
+		PROGRESS,SEGMENTS,RESUME,START,SCHEDULED,FINISH,
+		DOWNLOADED
 	}
 	public enum Status{
 		QUEUED, SCHEDULED, PAUSED, 
@@ -22,6 +22,7 @@ public class DownloadUnit extends Task<Void> {
 	/* download related static information */
 	private long uid;
 	public long sizeLong;
+	public boolean resumable;
 	
 	private SimpleStringProperty filename;
 	private SimpleStringProperty origin;
@@ -29,7 +30,7 @@ public class DownloadUnit extends Task<Void> {
 	private SimpleStringProperty folder;
 	private SimpleStringProperty size;
     private SimpleIntegerProperty segments;
-    private SimpleBooleanProperty resume;
+    private SimpleStringProperty resumeCap;
 	
     /* download related dynamic information */
 	public Status statusEnum;
@@ -37,6 +38,7 @@ public class DownloadUnit extends Task<Void> {
 	
 	private SimpleStringProperty status;
 	private SimpleStringProperty transferRate;
+    private SimpleStringProperty downloaded;
 	private SimpleDoubleProperty progress;
     //private SimpleObjectProperty<LocalDateTime> start, scheduled, finish;
 
@@ -48,15 +50,18 @@ public class DownloadUnit extends Task<Void> {
     	folder = new SimpleStringProperty(System.getProperty("user.home")+File.separator+"/Downloads");
     	size = new SimpleStringProperty("--");
     	segments = new SimpleIntegerProperty(1);
-    	resume = new SimpleBooleanProperty(false);
+    	resumeCap = new SimpleStringProperty("No");
     	
     	/* setting default dynamic elements */
     	statusEnum = Status.QUEUED;
+    	resumable = false;
     	chunks = new ArrayList<Long>();
     	
     	status = new SimpleStringProperty("Queued");
     	transferRate = new SimpleStringProperty("--");
     	progress = new SimpleDoubleProperty(0);
+    	downloaded = new SimpleStringProperty("0 B");
+    	
     	/*
     	start = new SimpleObjectProperty<LocalDateTime>();
     	scheduled = new SimpleObjectProperty<LocalDateTime>();
@@ -93,7 +98,9 @@ public class DownloadUnit extends Task<Void> {
     	case SEGMENTS:
     		return segments.get();
     	case RESUME:
-    		return resume.get();
+    		return resumeCap.get();
+    	case DOWNLOADED:
+    		return downloaded.get();
     	/*
     	case START:
     		return start.get();
@@ -130,6 +137,9 @@ public class DownloadUnit extends Task<Void> {
     	case TRANSFER_RATE:
     		transferRate.set((String)value);
     		break;
+    	case DOWNLOADED:
+    		downloaded.set((String)value);
+    		break;
     	case PROGRESS:
     		progress.set((Double)value);
     		updateProgress((Double)value, 1);
@@ -138,7 +148,7 @@ public class DownloadUnit extends Task<Void> {
     		segments.set((Integer)value);
     		break;
     	case RESUME:
-    		resume.set((boolean)value);
+    		resumeCap.set((String)value);
     		break;
     	/*
     	case START:
@@ -160,7 +170,6 @@ public class DownloadUnit extends Task<Void> {
     	return filename;
     }
     
-
     public StringProperty sizeProperty(){
     	return size;
     }
@@ -171,6 +180,14 @@ public class DownloadUnit extends Task<Void> {
 
     public StringProperty transferRateProperty(){
     	return transferRate;
+    }
+    
+    public StringProperty resumeCapProperty(){
+    	return resumeCap;
+    }
+    
+    public StringProperty downloadedProperty(){
+    	return downloaded;
     }
 
 	@Override
