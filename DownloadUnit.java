@@ -1,22 +1,30 @@
 import java.io.File;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
-import javafx.concurrent.Task;
 import javafx.beans.property.StringProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleObjectProperty;
-import javafx.scene.control.ProgressIndicator;
 
 public class DownloadUnit /*extends Task<Void>*/ {
 	public enum TableField {
 		FILENAME,ORIGIN,URL,FOLDER,SIZE,STATUS,TRANSFER_RATE,
 		PROGRESS,SEGMENTS,RESUME,START,SCHEDULED,FINISH
 	}
+	public enum Status{
+		QUEUED, SCHEDULED, PAUSED, 
+		DOWNLOADING, COMPLETED, ERROR
+	}
 	
 	private long uid;
+	public Status statusEnum;
+	public long sizeLong;
+	public List<Long> chunks;
+	
 	private SimpleStringProperty filename;
 	private SimpleStringProperty origin;
 	private SimpleStringProperty url;
@@ -30,6 +38,9 @@ public class DownloadUnit /*extends Task<Void>*/ {
     private SimpleObjectProperty<LocalDateTime> start, scheduled, finish;
 
     public DownloadUnit (String uri){
+    	statusEnum = Status.QUEUED;
+    	chunks = new ArrayList<Long>();
+    	
     	filename = new SimpleStringProperty(uri);
     	origin = new SimpleStringProperty(uri);
     	url = new SimpleStringProperty(uri);
