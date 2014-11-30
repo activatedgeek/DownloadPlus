@@ -10,13 +10,14 @@ import javafx.beans.property.SimpleDoubleProperty;
 
 public class DownloadUnit extends Task<Void> {
 	public enum TableField {
-		FILENAME,ORIGIN,URL,FOLDER,SIZE,STATUS,TRANSFER_RATE,
-		PROGRESS,SEGMENTS,RESUME,START,SCHEDULED,FINISH,
-		DOWNLOADED
+		FILENAME,ORIGIN,URL,FOLDER,SIZE,TYPE,STATUS,
+		TRANSFER_RATE,PROGRESS,PERCENTAGE,SEGMENTS,
+		RESUME,START,SCHEDULED,FINISH,DOWNLOADED
 	}
 	public enum Status{
 		QUEUED, SCHEDULED, PAUSED, 
-		DOWNLOADING, COMPLETED, ERROR
+		DOWNLOADING, COMPLETED, ERROR,
+		RESUMED
 	}
 	
 	/* download related static information */
@@ -29,8 +30,10 @@ public class DownloadUnit extends Task<Void> {
 	private SimpleStringProperty url;
 	private SimpleStringProperty folder;
 	private SimpleStringProperty size;
+	private SimpleStringProperty type;
     private SimpleIntegerProperty segments;
     private SimpleStringProperty resumeCap;
+    //private SimpleObjectProperty<LocalDateTime> start, scheduled, finish;
 	
     /* download related dynamic information */
 	public Status statusEnum;
@@ -40,7 +43,7 @@ public class DownloadUnit extends Task<Void> {
 	private SimpleStringProperty transferRate;
     private SimpleStringProperty downloaded;
 	private SimpleDoubleProperty progress;
-    //private SimpleObjectProperty<LocalDateTime> start, scheduled, finish;
+	private SimpleStringProperty percentage;
 
     public DownloadUnit (String uri){
     	/* setting default static elements */
@@ -49,6 +52,7 @@ public class DownloadUnit extends Task<Void> {
     	url = new SimpleStringProperty(uri);
     	folder = new SimpleStringProperty(System.getProperty("user.home")+File.separator+"/Downloads");
     	size = new SimpleStringProperty("--");
+    	type = new SimpleStringProperty("--");
     	segments = new SimpleIntegerProperty(1);
     	resumeCap = new SimpleStringProperty("No");
     	
@@ -60,6 +64,7 @@ public class DownloadUnit extends Task<Void> {
     	status = new SimpleStringProperty("Queued");
     	transferRate = new SimpleStringProperty("--");
     	progress = new SimpleDoubleProperty(0);
+    	percentage = new SimpleStringProperty("0.0 %");
     	downloaded = new SimpleStringProperty("0 B");
     	
     	/*
@@ -89,12 +94,16 @@ public class DownloadUnit extends Task<Void> {
     		return folder.get();
     	case SIZE:
     		return size.get();
+    	case TYPE:
+    		return type.get();
     	case STATUS:
     		return status.get();
     	case TRANSFER_RATE:
     		return transferRate.get();
     	case PROGRESS:
     		return progress.get();
+    	case PERCENTAGE:
+    		return percentage.get();
     	case SEGMENTS:
     		return segments.get();
     	case RESUME:
@@ -131,6 +140,9 @@ public class DownloadUnit extends Task<Void> {
     	case SIZE:
     		size.set((String)value);
     		break;
+    	case TYPE:
+    		type.set((String)value);
+    		break;
     	case STATUS:
     		status.set((String)value);
     		break;
@@ -143,6 +155,9 @@ public class DownloadUnit extends Task<Void> {
     	case PROGRESS:
     		progress.set((Double)value);
     		updateProgress((Double)value, 1);
+    		break;
+    	case PERCENTAGE:
+    		percentage.set((String)value);
     		break;
     	case SEGMENTS:
     		segments.set((Integer)value);
@@ -188,6 +203,10 @@ public class DownloadUnit extends Task<Void> {
     
     public StringProperty downloadedProperty(){
     	return downloaded;
+    }
+    
+    public StringProperty percentageProperty(){
+    	return percentage;
     }
 
 	@Override
