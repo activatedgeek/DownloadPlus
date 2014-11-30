@@ -1,12 +1,14 @@
 import java.io.File;
 import java.util.HashMap;
 
+import javafx.util.Callback;
 import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.paint.Color;
 import javafx.scene.layout.*;
 import javafx.stage.*;
 import javafx.scene.control.*;
@@ -182,7 +184,7 @@ public class Main extends Application {
 		        
 		        // event when "OK" is clicked
 		        okbtn.setOnAction(new EventHandler<ActionEvent>() {
-		            @SuppressWarnings("unchecked")
+		            @SuppressWarnings({ "unchecked", "rawtypes" })
 					@Override
 		            public void handle(ActionEvent e) {
 		                if ((addURL.getText() != null && !addURL.getText().isEmpty())){
@@ -206,10 +208,32 @@ public class Main extends Application {
 		                    sizeCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("size"));
 		                    statusCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("status"));
 		                    transferRateCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("transferRate"));
+		                    resumeCapCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("resumeCap"));
+		                    downloadedCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("downloaded"));
+		                    
+		                    resumeCapCol.setCellFactory(new Callback<TableColumn, TableCell>() {
+                                public TableCell call(TableColumn param) {
+                                    return new TableCell<DownloadUnit, String>() {
+
+                                        @Override
+                                        public void updateItem(String item, boolean empty) {
+                                            super.updateItem(item, empty);
+                                            if (!isEmpty()) {
+                                                if(item.contains("Yes"))
+                                                    this.setTextFill(Color.GREEN);
+                                                else if(item.contains("No"))
+                                                    this.setTextFill(Color.RED);
+                                                setText(item);
+                                            }
+                                            else
+                                                setText(null);
+                                        }
+                                    };
+                                }
+                            });
 		                } 
-		                else {
+		                else
 		                	label.setText("Please enter a URL");
-		                }
 		            }
 		        });
 		        
@@ -256,6 +280,7 @@ public class Main extends Application {
 	
 	class TableClickHandler implements EventHandler<MouseEvent>{
 
+		@SuppressWarnings("rawtypes")
 		@Override
 		public void handle(MouseEvent event) {
 			TableView tab = (TableView)event.getSource();
