@@ -14,7 +14,7 @@ public class Downloader extends Thread{
 	private int readTimeout = 5000;
 	private int bufferSize = 4096;
 	
-	private int numSegments = 1;
+	private long numSegments = 1;
 	private List<Long> segmentSizes = new ArrayList<Long>();
 	private List<Double> segmentSpeeds = new ArrayList<Double>();
 	private List<downloadSegment> segmentThread = new ArrayList<downloadSegment>();
@@ -22,7 +22,7 @@ public class Downloader extends Thread{
 	//private List<Long> segmentProgress = new ArrayList<Long>();
 	
 	private volatile long downloaded = 0;
-	private volatile boolean okToMerge = true, downloading = true;
+	private volatile boolean okToMerge = true, downloading = true, resumed = false, dumpOnPause = false;
 	private int transferRefreshRate = 200;			/* update transfer speed in 200 ms */
 	
 	public Downloader(DownloadUnit dUnit) {
@@ -32,6 +32,8 @@ public class Downloader extends Thread{
 			URIExplore uri = new URIExplore((String)dUnit.getProperty(DownloadUnit.TableField.ORIGIN));
 			dUnit.setProperty(DownloadUnit.TableField.URL, (String)uri.finalURI);
 		}
+		else if(dUnit.statusEnum == DownloadUnit.Status.RESUMED)
+			resumed = true;
 	}
 
 	/* Setup the download parameters */
@@ -53,7 +55,6 @@ public class Downloader extends Thread{
 					int responseCode = con.getResponseCode();
 					if(responseCode == HttpURLConnection.HTTP_OK){
 						int resp = setfileName();
-						
 						/* Download in segments if server supports Accept-Ranges header */
 						String rangeSupport = con.getHeaderField("Accept-Ranges");
 						if (rangeSupport != null){
@@ -63,6 +64,13 @@ public class Downloader extends Thread{
 						con.disconnect();
 						if(resp<0)
 							return;
+					}
+					else{
+						dUnit.resumable = false;
+						dUnit.setProperty(DownloadUnit.TableField.RESUME, "No");
+						dUnit.statusEnum = DownloadUnit.Status.ERROR;
+						dUnit.setProperty(DownloadUnit.TableField.STATUS, "Connection Error");
+						return;
 					}
 				}
 			}catch(Exception e){
@@ -92,6 +100,17 @@ public class Downloader extends Thread{
 		}catch(Exception e){
 			Logger.log(Logger.Status.ERR_DESTROY, e.getMessage());
 		}
+		
+		/* delete all segments */
+		String fileName = (String)dUnit.getProperty(DownloadUnit.TableField.FILENAME);
+		try{
+			for(int i=0; i<numSegments;++i){
+				File file = new File(Main.tempFolderPath + File.separator + fileName + ".part" + i);
+				file.delete();
+			}
+		}catch(Exception e){
+			Logger.log(Logger.Status.ERR_DESTROY, "Error destroying: "+e.getMessage());
+		}
 	}
 	
 	/* Sets the filename for a file at given URL */
@@ -115,7 +134,7 @@ public class Downloader extends Thread{
 			fileName = finalURI.substring(finalURI.lastIndexOf("/") + 1, finalURI.length());
 		}
 		dUnit.setProperty(DownloadUnit.TableField.FILENAME, fileName);
-		
+
 		File file = new File((String)dUnit.getProperty(DownloadUnit.TableField.FOLDER)+File.separator+fileName);
 		if(file.exists()){
 			dUnit.statusEnum = DownloadUnit.Status.ERROR;
@@ -170,6 +189,14 @@ public class Downloader extends Thread{
 			segmentThread.get(i).pauseSegment();
 		dUnit.statusEnum = DownloadUnit.Status.PAUSED;
 		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Paused");
+		JSON.dumpDownload(dUnit);
+	}
+	
+	public void pauseDownload(boolean dump){
+		for(int i=0;i<segmentThread.size();++i)
+			segmentThread.get(i).pauseSegment();
+		this.dumpOnPause = dump;
+		JSON.dumpDownload(dUnit);
 	}
 	
 	private void buildSegments(){
@@ -181,7 +208,7 @@ public class Downloader extends Thread{
 			dUnit.setProperty(DownloadUnit.TableField.SEGMENTS, numSegments);
 		}
 		else{
-			numSegments = (int)dUnit.getProperty(DownloadUnit.TableField.SEGMENTS);
+			numSegments = (long)dUnit.getProperty(DownloadUnit.TableField.SEGMENTS);
 		}
 		
 		/* populate progress list */
@@ -284,12 +311,18 @@ public class Downloader extends Thread{
 		
 		if(numSegments>1 && okToMerge)
 			mergeSegments();
-		if(okToMerge)
+		if(okToMerge){
+			dUnit.statusEnum = DownloadUnit.Status.COMPLETED;
 			dUnit.setProperty(DownloadUnit.TableField.STATUS, "Completed");
+		}
+		
+		if(dumpOnPause)
+			JSON.dumpDownload(dUnit);
 	}
 	
 	/* Merge the downloaded segments into one file and deletes them */
 	private void mergeSegments(){
+		dUnit.statusEnum = DownloadUnit.Status.MERGING;
 		dUnit.setProperty(DownloadUnit.TableField.STATUS, "Merging");
 		String fileName = (String)dUnit.getProperty(DownloadUnit.TableField.FILENAME);
 		String filesavePath = (String)dUnit.getProperty(DownloadUnit.TableField.FOLDER) + File.separator + fileName;
@@ -326,7 +359,6 @@ public class Downloader extends Thread{
 		
 		private boolean running = true, destroy = false;
 		
-		
 		downloadSegment(int segNo, long startByte) {
 			segmentName = (String)dUnit.getProperty(DownloadUnit.TableField.FILENAME) + ".part" + segNo;
 			segConnection = makeConnection();
@@ -346,6 +378,7 @@ public class Downloader extends Thread{
 			okToMerge = false;
 			destroy = true;
 		}
+		
 		
 		/* Thread downloads a particular range of file from server on an independent connection */
 		public void run(){
@@ -368,13 +401,13 @@ public class Downloader extends Thread{
 				
 				/* append bytes to output stream */
 				FileOutputStream outputStream;
-				if((long)dUnit.chunks.get(segNo) > 0 && dUnit.statusEnum == DownloadUnit.Status.RESUMED)
+				if(resumed)
 					outputStream = new FileOutputStream(segmentsavePath, true);
 				else
 					outputStream = new FileOutputStream(segmentsavePath, false);
 				
 				/* number of bytes remaining to be read */
-				long readRemaining = segmentSizes.get(segNo);
+				long readRemaining = segmentSizes.get(segNo) - dUnit.chunks.get(segNo);
 				int bytesRead = -1;
 				byte[] buffer = new byte[bufferSize];
 				Clock clock = new Clock();
@@ -382,6 +415,8 @@ public class Downloader extends Thread{
 				while((bytesRead = inputStream.read(buffer)) != -1){
 					long lap = clock.getLapElapsedTime();
 					if(!running)
+						break;
+					if(!downloading)
 						break;
 					if(dUnit.sizeLong > 0){
 						readRemaining -= bytesRead;				/* decrement remaining bytes to read */
@@ -401,23 +436,27 @@ public class Downloader extends Thread{
 				inputStream.close();
 				if(destroy){
 					try{
-						(new File(segmentsavePath)).delete();	
+						(new File(segmentsavePath)).delete();
 					}catch(Exception e){
 						Logger.log(Logger.Status.ERR_DESTROY, e.getMessage());
 					}
 				}
+				segmentSpeeds.set(segNo, (double)0);
 			}
 			catch(SocketTimeoutException e){
 				okToMerge = false;
-				dUnit.statusEnum = DownloadUnit.Status.ERROR;
-				dUnit.setProperty(DownloadUnit.TableField.STATUS, "Error");
+				downloading = false;
+				dUnit.statusEnum = DownloadUnit.Status.NET_ERROR;
+				dUnit.setProperty(DownloadUnit.TableField.STATUS, "Connection Error");
 				Logger.log(Logger.Status.ERR_READ, e.getMessage());
 			}
 			catch(Exception e){
 				okToMerge = false;
+				downloading = false;
 				dUnit.statusEnum = DownloadUnit.Status.ERROR;
 				dUnit.setProperty(DownloadUnit.TableField.STATUS, "Error");
 				Logger.log(Logger.Status.ERR_CONN, e.getMessage());
+				e.printStackTrace();
 			}finally{
 				segConnection.disconnect();
 			}

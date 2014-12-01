@@ -1,5 +1,8 @@
 import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 import javafx.util.Callback;
 import javafx.application.Application;
@@ -19,6 +22,11 @@ import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.layout.GridPane;
 import javafx.stage.Stage;
+import javafx.application.Platform;
+
+import java.awt.Desktop;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
 
 public class Main extends Application {
 	public static String tempFolderPath = System.getProperty("user.home")+File.separator + ".downloadPlusPlus" + File.separator + "segments";
@@ -42,7 +50,7 @@ public class Main extends Application {
 	private static final ObservableList<DownloadUnit> downloadList = FXCollections.observableArrayList();
 	private static final HashMap<Long, DownloadUnit> idToDunit = new HashMap<Long, DownloadUnit>();
 	private static final HashMap<Long, Downloader> idToDownloader = new HashMap<Long, Downloader>();
-	private static long uid = 0;
+	private static volatile long uid = 0;
 	
 	//private boolean paused = false;
 	
@@ -57,6 +65,7 @@ public class Main extends Application {
 	final static VBox topContainer = new VBox();
 	
 	public static void main(String[] args) {
+		Platform.setImplicitExit(false);
 		launch(args);
 	}
 	
@@ -64,14 +73,81 @@ public class Main extends Application {
 	public void start(Stage stage) throws Exception {
 		initGUI(stage);
 		initToolbarHandlers();
-		table.addEventHandler(MouseEvent.MOUSE_CLICKED, new TableClickHandler());
+		if(table != null)
+			table.addEventHandler(MouseEvent.MOUSE_CLICKED, new TableClickHandler());
 		stage.show();
 		
 		stage.setOnCloseRequest(new EventHandler<WindowEvent>() {
 	          public void handle(WindowEvent we) {
-	        	  Logger.debug("Closing Windows");    
+	        	  for(Map.Entry<Long, Downloader> dwnld: idToDownloader.entrySet()){
+	        		  dwnld.getValue().pauseDownload(true);
+	        	  }
 				}
-	      });  
+	      });
+		loadDownloadState();
+	}
+	
+	private void loadDownloadState(){
+		new Thread(){
+			@SuppressWarnings({ "unchecked", "rawtypes" })
+			public void run(){
+				try{
+					for(final File file: (new File(JSON.dumpPath)).listFiles()){
+						if(!file.isDirectory()){
+							String ext = file.getAbsolutePath().substring(file.getAbsolutePath().lastIndexOf("."), file.getAbsolutePath().length());
+							if(ext.equals(".data")){
+								DownloadUnit dUnit = JSON.loadDumpDownload(file.getAbsolutePath());
+								
+								idToDunit.put(dUnit.getUID(), dUnit);
+	                    		Downloader dwnld = new Downloader(dUnit);
+	                    		idToDownloader.put(dUnit.getUID(), dwnld);
+	                    		downloadList.add(dUnit);
+			                    if(dUnit.statusEnum != DownloadUnit.Status.COMPLETED){
+			                    	dUnit.statusEnum = DownloadUnit.Status.RESUMED;
+			                    	dwnld.start();
+			                    }
+			                    
+			                    if(uid>dUnit.getUID())
+			                    	uid = dUnit.getUID();
+			                    file.delete();
+							}
+						}
+					}
+					uid++;
+					
+                    fileNameCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("filename"));
+                    sizeCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("size"));
+                    statusCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("status"));
+                    transferRateCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("transferRate"));
+                    resumeCapCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("resumeCap"));
+                    downloadedCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("downloaded"));
+                    percentageCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("percentage"));
+                    
+                    resumeCapCol.setCellFactory(new Callback<TableColumn, TableCell>() {
+                        public TableCell call(TableColumn param) {
+                            return new TableCell<DownloadUnit, String>() {
+
+                                @Override
+                                public void updateItem(String item, boolean empty) {
+                                    super.updateItem(item, empty);
+                                    if (!isEmpty()) {
+                                        if(item.contains("Yes"))
+                                            this.setTextFill(Color.GREEN);
+                                        else if(item.contains("No"))
+                                            this.setTextFill(Color.RED);
+                                        setText(item);
+                                    }
+                                    else
+                                        setText(null);
+                                }
+                            };
+                        }
+                    });
+				}catch(Exception e){
+					Logger.log(Logger.Status.ERR_LOAD, "Error restoring state: "+e.getMessage());
+				}
+			}
+		}.start();
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
@@ -151,6 +227,7 @@ public class Main extends Application {
 				final Stage popup = new Stage();
 				popup.initModality(Modality.APPLICATION_MODAL);
 				popup.setTitle("Enter URL(s) to download");
+				popup.setResizable(false);
 				
 				BorderPane popupRoot = new BorderPane();
 				
@@ -172,6 +249,17 @@ public class Main extends Application {
 				addURL.setPrefHeight(175);
 				GridPane.setConstraints(addURL, 0, 0);
 				
+				String clipboardContent=null;
+				try {
+					clipboardContent = (String) Toolkit.getDefaultToolkit()
+					        .getSystemClipboard().getData(DataFlavor.stringFlavor);	 
+				} catch (Exception e) {
+					Logger.log(Logger.Status.ERR_CLIPBOARD, e.getMessage());
+				} 
+				if (Pattern.compile("((mailto\\:|(news|(ht|f)tp(s?))\\://){1}\\S+)").matcher(clipboardContent).find()) {
+					addURL.setText(clipboardContent);
+				}
+				
 				saveAs.setText(System.getProperty("user.home")+File.separator+"Downloads");
 				saveAs.setPrefColumnCount(20);
 				GridPane.setConstraints(saveAs, 0, 1);
@@ -183,6 +271,7 @@ public class Main extends Application {
 
 		        Button cancelbtn = new Button("Cancel");
 		        cancelbtn.setPrefWidth(100);
+		        cancelbtn.setCancelButton(true);
 		        GridPane.setConstraints(cancelbtn, 1, 1);
 		        
 		        Button browsebtn = new Button("Browse");
@@ -200,24 +289,28 @@ public class Main extends Application {
 		            @SuppressWarnings({ "unchecked", "rawtypes" })
 					@Override
 		            public void handle(ActionEvent e) {
-		                if ((addURL.getText() != null && !addURL.getText().isEmpty())){
+		            	Boolean URLvalid = (Pattern.compile("((mailto\\:|(news|(ht|f)tp(s?))\\://){1}\\S+)").matcher(addURL.getText()).find());
+						
+		                if ((addURL.getText() != null && !addURL.getText().isEmpty()) && URLvalid){
 		                    popup.close();
 		                    String[] batchList = (addURL.getText().split("\n"));
 		                    for(int i=0; i<batchList.length; ++i){
 		                    	final int index = i;
 			                    new Thread(){
 			                    	public void run(){
+			                    		uid++;
 			                    		DownloadUnit dUnit = new DownloadUnit(batchList[index]);
 			                    		dUnit.setProperty(DownloadUnit.TableField.FOLDER, (String)saveAs.getText());
 			                    		dUnit.setUID(uid);
 			                    		idToDunit.put(uid, dUnit);
 			                    		Downloader dwnld = new Downloader(dUnit);
-			                    		idToDownloader.put(uid++, dwnld);
+			                    		Logger.debug(dUnit.getUID()+"");
+			                    		idToDownloader.put(uid, dwnld);
 			                    		
 			                    		downloadList.add(dUnit);
 					                    dwnld.start();
 			                    	}
-			                    }.start();	
+			                    }.start();
 		                    }
 		                    
 		                    fileNameCol.setCellValueFactory(new PropertyValueFactory<DownloadUnit,String>("filename"));
@@ -283,14 +376,19 @@ public class Main extends Application {
 				if(selected != null) {
 					
 					if (selected.getProperty(DownloadUnit.TableField.STATUS)=="Downloading") {
-						//update status
-						selected.setProperty(DownloadUnit.TableField.STATUS,"Paused");
 						//change button images
 						Image playimage = new Image(getClass().getResourceAsStream("images/play.png"));
 						playPausebtn.setGraphic(new ImageView(playimage));
+						idToDownloader.get(selected.getUID()).pauseDownload();
 					}
 					else if (selected.getProperty(DownloadUnit.TableField.STATUS)=="Paused") {
-						//update status
+						idToDownloader.remove(selected.getUID());
+						
+						selected.statusEnum = DownloadUnit.Status.RESUMED;
+                		Downloader dwnld = new Downloader(selected);
+                		idToDownloader.put(selected.getUID(), dwnld);
+                		dwnld.start();
+                		
 						selected.setProperty(DownloadUnit.TableField.STATUS,"Downloading");
 						//change button image
 						Image pauseimage = new Image(getClass().getResourceAsStream("images/pause.png"));
@@ -318,11 +416,11 @@ public class Main extends Application {
 					
 					/* destroy object and related temporary dependencies */
 					Downloader removed = idToDownloader.get(selected.getUID());
+					removed.destroyDownload();
+					
 					idToDownloader.remove(selected.getUID());
 					idToDunit.remove(selected.getUID());
 					downloadList.remove(selected);
-					
-					removed.destroyDownload();
 				}
 			}
 		});
@@ -336,27 +434,48 @@ public class Main extends Application {
 			TableView tab = (TableView)event.getSource();
 			DownloadUnit selected = (DownloadUnit)tab.getSelectionModel().getSelectedItem();
 			
-			infoPane.getItems().removeAll(gridPane);
-			gridPane.getChildren().removeAll(fileNameLabel, sizeLabel, statusLabel, fileTypeLabel, filePathLabel);
-			topContainer.getChildren().remove(infoPane);
-			
-			if(selected!=null){
-				fileNameLabel.setText("File Name: "+(String)selected.getProperty(DownloadUnit.TableField.FILENAME));
-            	sizeLabel.setText("File Size: "+(String)selected.getProperty(DownloadUnit.TableField.SIZE));
-            	statusLabel.setText("Status: "+(String)selected.getProperty(DownloadUnit.TableField.STATUS));
-            	fileTypeLabel.setText("File Type: "+(String)selected.getProperty(DownloadUnit.TableField.TYPE));
-            	filePathLabel.setText("File Location: "+(String)selected.getProperty(DownloadUnit.TableField.FOLDER));
-			}
-			
-            GridPane.setConstraints(fileNameLabel, 0, 0);
-            GridPane.setConstraints(sizeLabel, 0, 1);
-            GridPane.setConstraints(statusLabel, 0, 2);
-            GridPane.setConstraints(fileTypeLabel, 0, 3);
-            GridPane.setConstraints(filePathLabel, 0, 4);
-
-            gridPane.getChildren().addAll(fileNameLabel, sizeLabel, statusLabel, fileTypeLabel,filePathLabel);                
-            infoPane.getItems().add(gridPane);
-            topContainer.getChildren().add(infoPane);
+				if (selected != null && event.getClickCount()>1 && selected.getProperty(DownloadUnit.TableField.STATUS)=="Completed") {
+					if (Desktop.isDesktopSupported()) {
+						try {
+							Desktop.getDesktop().open(new File((String)selected.getProperty(DownloadUnit.TableField.FOLDER)));
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+				}
+				else if (event.getClickCount() == 1 && selected != null){
+					if (selected.getProperty(DownloadUnit.TableField.STATUS)=="Downloading") {
+						Image pauseimage = new Image(getClass().getResourceAsStream("images/pause.png"));
+						playPausebtn.setGraphic(new ImageView(pauseimage));
+					}
+					
+					else if (selected.getProperty(DownloadUnit.TableField.STATUS)=="Paused") {
+						Image playimage = new Image(getClass().getResourceAsStream("images/play.png"));
+						playPausebtn.setGraphic(new ImageView(playimage));
+					}
+					
+					infoPane.getItems().removeAll(gridPane);
+					gridPane.getChildren().removeAll(fileNameLabel, sizeLabel, statusLabel, fileTypeLabel, filePathLabel);
+					topContainer.getChildren().remove(infoPane);
+					
+					if(selected!=null){
+						fileNameLabel.setText("File Name: "+(String)selected.getProperty(DownloadUnit.TableField.FILENAME));
+		            	sizeLabel.setText("File Size: "+(String)selected.getProperty(DownloadUnit.TableField.SIZE));
+		            	statusLabel.setText("Status: "+(String)selected.getProperty(DownloadUnit.TableField.STATUS));
+		            	fileTypeLabel.setText("File Type: "+(String)selected.getProperty(DownloadUnit.TableField.TYPE));
+		            	filePathLabel.setText("File Location: "+(String)selected.getProperty(DownloadUnit.TableField.FOLDER));
+					}
+					
+		            GridPane.setConstraints(fileNameLabel, 0, 0);
+		            GridPane.setConstraints(sizeLabel, 0, 1);
+		            GridPane.setConstraints(statusLabel, 0, 2);
+		            GridPane.setConstraints(fileTypeLabel, 0, 3);
+		            GridPane.setConstraints(filePathLabel, 0, 4);
+	
+		            gridPane.getChildren().addAll(fileNameLabel, sizeLabel, statusLabel, fileTypeLabel,filePathLabel);                
+		            infoPane.getItems().add(gridPane);
+		            topContainer.getChildren().add(infoPane);
+				}
 		}
 		
 	}

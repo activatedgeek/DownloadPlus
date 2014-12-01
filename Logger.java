@@ -11,7 +11,7 @@ public class Logger {
 		ERR_CONN, ERR_HTTP, ERR_REDIRECT, ERR_CLOCK,
 		ERR_DUMP, ERR_READ, ERR_MERGE,
 		ERR_PAUSE, ERR_RESUME, ERR_THREAD, ERR_FILE,
-		ERR_DESTROY
+		ERR_DESTROY, ERR_LOAD, ERR_CLIPBOARD
 	}
 	private static final Map<Status, String> errorMap = new HashMap<Status,String>();
 	static{
@@ -27,6 +27,9 @@ public class Logger {
 		errorMap.put(Status.ERR_THREAD, "Error in thread operation.");
 		errorMap.put(Status.ERR_FILE, "Error in processing/creating file.");
 		errorMap.put(Status.ERR_DESTROY, "Error in deleting file.");
+		errorMap.put(Status.ERR_LOAD, "Error loading state.");
+		errorMap.put(Status.ERR_CLIPBOARD, "Error accessing clipboard.");
+
 	}
 	
 	public static void enableLog(){

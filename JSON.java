@@ -24,7 +24,12 @@ import org.json.simple.parser.JSONParser;
  * 		Completed Chunks: "chunks" [Range String List: "start-end"]
  */
 public class JSON {
-	public static String dumpPath = System.getProperty("user.home")+File.separator+"Downloads";
+	public static String dumpPath = System.getProperty("user.home")+File.separator+".downloadPlusPlus"+File.separator+"data";
+	static{
+		File dump = new File(dumpPath);
+		if(!dump.isDirectory())
+			dump.mkdirs();
+	}
 	
 	@SuppressWarnings("unchecked")
 	public static void dumpDownload(DownloadUnit dUnit){
@@ -44,6 +49,7 @@ public class JSON {
 		
 		/* poulate dynamic download properties */
 		jsonData.put("status", dUnit.getProperty(DownloadUnit.TableField.STATUS));
+		jsonData.put("statusEnum", dUnit.statusEnum.toString());
 		jsonData.put("chunks", dUnit.chunks);
 		
 		try{
@@ -58,12 +64,14 @@ public class JSON {
 			
 			bw.close();
 			fw.close();
+			Logger.debug("Dumped into "+dataDump.getAbsolutePath());
 		}catch(Exception e){
 			Logger.log(Logger.Status.ERR_DUMP, e.getMessage());
 		}
 	}
 	
-	public static DownloadUnit loadDumpJSON(String path){
+	@SuppressWarnings("unchecked")
+	public static DownloadUnit loadDumpDownload(String path){
 		JSONParser parser = new JSONParser();
 		try{
 			JSONObject jsonData = (JSONObject)parser.parse(new FileReader(path));
@@ -81,6 +89,7 @@ public class JSON {
 			dUnit.setProperty(DownloadUnit.TableField.SIZE, polishSize(dUnit.sizeLong));
 			dUnit.setProperty(DownloadUnit.TableField.TYPE, jsonData.get("type"));
 			dUnit.setProperty(DownloadUnit.TableField.SEGMENTS, jsonData.get("segments"));
+			
 			String resumeCap = "No";
 			if(dUnit.resumable)
 				resumeCap = "Yes";
@@ -88,7 +97,16 @@ public class JSON {
 			
 			/* set dynamic properties */
 			dUnit.setProperty(DownloadUnit.TableField.STATUS, jsonData.get("status"));
+			dUnit.statusEnum = DownloadUnit.Status.valueOf((String)jsonData.get("statusEnum"));
 			dUnit.chunks = (List<Long>) jsonData.get("chunks");
+			long downloaded = 0;
+			for(int i=0; i<dUnit.chunks.size(); ++i)
+				downloaded += dUnit.chunks.get(i);
+			dUnit.setProperty(DownloadUnit.TableField.DOWNLOADED, polishSize(downloaded));
+			
+			double percent = (double)downloaded/dUnit.sizeLong;
+			dUnit.setProperty(DownloadUnit.TableField.PROGRESS, percent);
+			dUnit.setProperty(DownloadUnit.TableField.PERCENTAGE, (Math.round(percent*10000)/100.0d)+" %");
 			
 			/*
 			dUnit.setProperty(DownloadUnit.TableField.START, jsonData.get("start"));
@@ -98,16 +116,9 @@ public class JSON {
 			
 			return dUnit;
 		}catch(Exception e){
+			e.printStackTrace();
 			Logger.log(Logger.Status.ERR_READ, e.getMessage());
 			return null;
-		}
-	}
-	
-	public static void loadDumps(final String folder){
-		for(final File file: (new File(folder)).listFiles()){
-			if(!file.isDirectory()){
-				Logger.debug("File: "+file.getName());
-			}
 		}
 	}
 	

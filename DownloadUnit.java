@@ -5,19 +5,19 @@ import java.util.List;
 import javafx.concurrent.Task;
 import javafx.beans.property.StringProperty;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleLongProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 
 public class DownloadUnit extends Task<Void> {
 	public enum TableField {
 		FILENAME,ORIGIN,URL,FOLDER,SIZE,TYPE,STATUS,
 		TRANSFER_RATE,PROGRESS,PERCENTAGE,SEGMENTS,
-		RESUME,START,SCHEDULED,FINISH,DOWNLOADED
+		RESUME,START,SCHEDULED,FINISH,DOWNLOADED,
 	}
 	public enum Status{
 		QUEUED, SCHEDULED, PAUSED, 
 		DOWNLOADING, COMPLETED, ERROR,
-		RESUMED
+		RESUMED, MERGING, NET_ERROR
 	}
 	
 	/* download related static information */
@@ -31,7 +31,7 @@ public class DownloadUnit extends Task<Void> {
 	private SimpleStringProperty folder;
 	private SimpleStringProperty size;
 	private SimpleStringProperty type;
-    private SimpleIntegerProperty segments;
+    private SimpleLongProperty segments;
     private SimpleStringProperty resumeCap;
     //private SimpleObjectProperty<LocalDateTime> start, scheduled, finish;
 	
@@ -53,7 +53,7 @@ public class DownloadUnit extends Task<Void> {
     	folder = new SimpleStringProperty(System.getProperty("user.home")+File.separator+"/Downloads");
     	size = new SimpleStringProperty("--");
     	type = new SimpleStringProperty("--");
-    	segments = new SimpleIntegerProperty(1);
+    	segments = new SimpleLongProperty(1);
     	resumeCap = new SimpleStringProperty("No");
     	
     	/* setting default dynamic elements */
@@ -160,7 +160,7 @@ public class DownloadUnit extends Task<Void> {
     		percentage.set((String)value);
     		break;
     	case SEGMENTS:
-    		segments.set((Integer)value);
+    		segments.set((Long)value);
     		break;
     	case RESUME:
     		resumeCap.set((String)value);
